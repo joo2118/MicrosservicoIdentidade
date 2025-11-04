@@ -1,0 +1,73 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <StartupObject>Identidade.Consumidor.Program</StartupObject>
+    <AppDesignerFolder>Propriedades</AppDesignerFolder>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <OutputPath>bin\Debug\netcoreapp3.1\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="appsettings.Development.json" />
+    <None Remove="appsettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\VersionInfo.cs" Link="Propriedades\VersionInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.Development.json">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="appsettings.json">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Elasticsearch.Net" Version="6.4.1" />
+    <PackageReference Include="MassTransit" Version="8.5.2" />
+    <PackageReference Include="MassTransit.Extensions.DependencyInjection" Version="7.3.1" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.13" />
+    <PackageReference Include="Serilog.AspNetCore" Version="2.2.0" />
+    <PackageReference Include="Serilog.Sinks.Elasticsearch" Version="6.5.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="4.0.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.2.88" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.1" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.6.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.5.0" />
+    <PackageReference Include="System.Reactive.Core" Version="4.1.2" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Identidade.Dominio\Identidade.Dominio.csproj" />
+    <ProjectReference Include="..\Identidade.Infraestrutura\Identidade.Infraestrutura.csproj" />
+    <ProjectReference Include="..\Identidade.Publico\Identidade.Publico.csproj" />
+  </ItemGroup>
+
+   <ItemGroup>
+    <ProjectReference Include="..\Identidade.Dominio\Identidade.Dominio.csproj" />
+    <ProjectReference Include="..\Identidade.Infraestrutura\Identidade.Infraestrutura.csproj" />
+    <ProjectReference Include="..\Identidade.Publico\Identidade.Publico.csproj" />
+  </ItemGroup>
+    <ItemGroup>
+	    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+</Project>

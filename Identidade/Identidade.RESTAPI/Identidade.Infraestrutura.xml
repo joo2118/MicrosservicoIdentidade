@@ -1,0 +1,157 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Identidade.RESTAPI</name>
+    </assembly>
+    <members>
+        <member name="M:Identidade.RESTAPI.Controllers.PermissionsController.GetById(System.String)">
+            <summary>
+            Gets a permission by the ID.
+            </summary>
+            <param name="permissionId"> The ID of the permission to be requested. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.PermissionsController.Get(System.String)">
+            <summary>
+            Gets all the permissions from the database, allowing filter by name.
+            </summary>
+            <param name="permissionName"> The name of the permission to be requested.
+            Remark: This parameter must be in a URL-encoded string format. </param>
+            <remarks> Remarks:
+            <br />
+            <para> If the name is informed on the query, an array with a single permission is returned. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.PermissionsController.GetUserGroups(System.String)">
+            <summary>
+            Gets all the user groups containing a specific permission.
+            </summary>
+            <param name="permissionId"> The ID of the permission contained in the user groups. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.Create(Identidade.Publico.Dtos.InputUserGroupDto)">
+            <summary>
+            Creates a new user group on the database.
+            </summary>
+            <param name="userGroupDto"> The user group to be created. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.Delete(System.String)">
+            <summary>
+            Deletes an user group from the database.
+            </summary>
+            <param name="userGroupId"> The ID of the user group to be deleted. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.Update(System.String,Identidade.Publico.Dtos.InputUserGroupDto)">
+            <summary>
+            Updates an user group.
+            </summary>
+            <param name="userGroupId"> The ID of the user group to be updated. </param>
+            <param name="userGroupDto"> The user group to be updated. </param>
+            <remarks> Remarks:
+            <br />
+            <para> The properties not setted or setted as null will be ignored on the update. </para>
+            <br />
+            <para> If the permissions field is not null (including an empty array), the existing permissions will be overrided. To add permissions without impacting the existing ones, use "PUT groups/{userGroupId}/permissions". </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.GetById(System.String)">
+            <summary>
+            Gets an user group by the ID.
+            </summary>
+            <param name="userGroupId"> The ID of the user group to be requested. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.Get(System.String)">
+            <summary>
+            Gets all the user groups from the database, allowing filter by name.
+            </summary>
+            <param name="userGroupName"> The name of the user group to be requested.
+            Remark: This parameter must be in a URL-encoded string format. </param>
+            <remarks> Remarks:
+            <br />
+            <para> If the name is informed on the query, an array with a single permission is returned. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.GetPermissions(System.String)">
+            <summary>
+            Gets all the permissions of an user group.
+            </summary>
+            <param name="userGroupId"> The ID of the user group where the permissions will be requested. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.AddPermissions(System.String,System.Collections.Generic.IReadOnlyCollection{Identidade.Publico.Dtos.InputPermissionDto})">
+            <summary>
+            Adds new permissions into an user group.
+            </summary>
+            <param name="userGroupId"> The ID of the user group where the permissions will be added. </param>
+            <param name="permissions"> The permissions to be added into the user group. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UserGroupsController.DeletePermissions(System.String,System.Collections.Generic.IReadOnlyCollection{System.String})">
+            <summary>
+            Deletes permissions from an user group.
+            </summary>
+            <param name="userGroupId"> The ID of the user group where the permissions will be deleted from. </param>
+            <param name="permissionsIds"> The IDs of the permissions to be deleted from the user group. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.Create(Identidade.Publico.Dtos.InputUserDto)">
+            <summary>
+            Creates a new user on the database.
+            </summary>
+            <param name="inputUserDto"> A JSON containing the informations of the user to be created. </param>
+            <remarks> Remarks:
+            <br />
+            <para> On the response, the password is never visible. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.Delete(System.String)">
+            <summary>
+            Deletes an user from the database.
+            </summary>
+            <param name="userId"> The ID of the user to be deleted. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.Update(System.String,Identidade.Publico.Dtos.InputUserDto)">
+            <summary>
+            Updates an user.
+            </summary>
+            <param name="userId"> The ID of the user to be updated. </param>
+            <param name="inputUserDto"> A JSON containing the information to be updated. </param>
+            <remarks> Remarks:
+            <br />
+            <para> The properties not setted or setted as null will be ignored on the update. </para>
+            <br />
+            <para> On the response, the password is never visible. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.GetById(System.String)">
+            <summary>
+            Gets an user by the ID.
+            </summary>
+            <param name="userId"> The ID of the user to be requested. </param>
+            <remarks> Remarks:
+            <br />
+            <para> On the response, the password is never visible. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.Get(System.String)">
+            <summary>
+            Gets all the users from database, allowing filter by login.
+            </summary>
+            <param name="login"> The login of the user to be requested. </param>
+            <remarks> Remarks:
+            <br />
+            <para> If the name is informed on the query, an array with a single user is returned. </para>
+            <br />
+            <para> On the response, the password is never visible. </para></remarks>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.GetUserGroups(System.String)">
+            <summary>
+            Gets all the user groups associated with a specific user.
+            </summary>
+            <param name="userId"> The user associated with the user groups. </param>=
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.AssociateToUserGroup(System.String,System.String)">
+            <summary>
+            Associates an user to a group.
+            </summary>
+            <param name="userId"> The user to be associated. </param>
+            <param name="userGroupId"> The group where the user will be associated to. </param>
+        </member>
+        <member name="M:Identidade.RESTAPI.Controllers.UsersController.DissociateFromUserGroup(System.String,System.String)">
+            <summary>
+            Dissociates an user from a group.
+            </summary>
+            <param name="userId"> The user to be assigned. </param>
+            <param name="userGroupId"> The group where the user will be assigned to. </param>
+        </member>
+    </members>
+</doc>

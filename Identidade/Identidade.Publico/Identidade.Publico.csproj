@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>Identidade.Publico</PackageId>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>Identidade.Publico.snk</AssemblyOriginatorKeyFile>
+    <Description>Package with the data transfer objects to help the communication Identity API.</Description>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <AppDesignerFolder>Propriedades</AppDesignerFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Requests\**" />
+    <EmbeddedResource Remove="Requests\**" />
+    <None Remove="Requests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\VersionInfo.cs" Link="Propriedades\VersionInfo.cs" />
+  </ItemGroup>
+
+</Project>
