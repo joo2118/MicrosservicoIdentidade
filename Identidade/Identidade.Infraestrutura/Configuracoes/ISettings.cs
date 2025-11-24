@@ -11,5 +11,20 @@ namespace Identidade.Infraestrutura.Configuracoes
         SettingsAuthenticationType AuthenticationType { get; }
         MessageBroker MessageBroker { get; }
         string CryptoKey { get; }
+        BaselineMetrics BaselineMetrics { get; }
+    }
+
+    public class BaselineMetrics
+    {
+        public bool EnableMetricsCollection { get; }
+        public string MetricsOutputPath { get; }
+        public int MetricsSamplingIntervalSeconds { get; }
+
+        public BaselineMetrics(bool enableMetricsCollection, string metricsOutputPath, int metricsSamplingIntervalSeconds)
+        {
+            EnableMetricsCollection = enableMetricsCollection;
+            MetricsOutputPath = metricsOutputPath;
+            MetricsSamplingIntervalSeconds = metricsSamplingIntervalSeconds;
+        }
     }
 }

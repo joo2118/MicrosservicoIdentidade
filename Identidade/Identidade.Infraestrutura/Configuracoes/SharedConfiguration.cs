@@ -63,7 +63,7 @@ namespace Identidade.Infraestrutura.Configuracoes
             {
                 using (var context = serviceScope.ServiceProvider.GetService<ARCDbContext>())
                 {
-                    if (env == Constants.cst_Tests)
+                    if (env == Constants.cst_Tests || env == "Development")
                     {
                         context.Database.EnsureDeleted();
                         context.Database.EnsureCreated();

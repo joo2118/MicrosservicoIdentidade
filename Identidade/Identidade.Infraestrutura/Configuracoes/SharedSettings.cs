@@ -13,6 +13,7 @@ namespace Identidade.Infraestrutura.Configuracoes
         public SettingsAuthenticationType AuthenticationType { get; }
         public MessageBroker MessageBroker { get; }
         public string CryptoKey { get; }
+        public BaselineMetrics BaselineMetrics { get; }
 
         protected SharedSettings(IConfiguration configuration)
         {
@@ -46,6 +47,14 @@ namespace Identidade.Infraestrutura.Configuracoes
                 writeToElasticSearch: loggingSection.GetValue("WriteToElasticSearch", false),
                 elasticSearchAddress: loggingSection.GetValue("ElasticSearchAddress", string.Empty),
                 logLevel: loggingSection.GetValue("LogLevel", LogEventLevel.Information)
+            );
+
+            var baselineMetricsSection = configuration.GetSection("BaselineMetrics");
+            BaselineMetrics = new BaselineMetrics
+            (
+                enableMetricsCollection: baselineMetricsSection.GetValue("EnableMetricsCollection", false),
+                metricsOutputPath: baselineMetricsSection.GetValue("MetricsOutputPath", "metrics\\baseline-{Date}.json"),
+                metricsSamplingIntervalSeconds: baselineMetricsSection.GetValue("MetricsSamplingIntervalSeconds", 60)
             );
 
             MessageBroker = configuration.GetValue("MessageBroker", MessageBroker.AzureServiceBus);

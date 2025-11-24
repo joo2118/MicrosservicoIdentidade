@@ -1,0 +1,24 @@
+version: '3.4'
+
+services:
+
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    networks:
+      - arc_network
+
+  rabbitmq: 
+    image: rabbitmq:3-management
+    hostname: "rabbitmq"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks: 
+      - arc_network
+
+networks: 
+  arc_network:
+    name: arc_network
+    driver: bridge
