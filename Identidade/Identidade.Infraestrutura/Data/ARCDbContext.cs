@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
-using Identidade.Dominio.Modelos;
 
 namespace Identidade.Infraestrutura.Data
 {

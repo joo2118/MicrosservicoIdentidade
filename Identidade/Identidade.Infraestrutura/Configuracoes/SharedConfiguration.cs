@@ -72,6 +72,8 @@ namespace Identidade.Infraestrutura.Configuracoes
                         return;
                     else
                     {
+                        // Use Migrate() for Development and Production
+                        // This will apply pending migrations without trying to create the database
                         context.Database.Migrate();
                     }
 

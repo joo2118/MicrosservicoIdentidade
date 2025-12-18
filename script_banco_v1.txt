@@ -1,0 +1,579 @@
+-- =====================================================================================
+-- Script: Criação Completa do Banco de Dados BancoIdentidade
+-- Descrição: Cria banco de dados com schema Identity, tabelas e stored procedures
+-- Data: 24/11/2025
+-- Baseado em: base_cliente09
+-- =====================================================================================
+
+USE master
+GO
+
+-- Criar o banco de dados
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'BancoIdentidade')
+BEGIN
+    CREATE DATABASE [BancoIdentidade]
+    PRINT 'Banco de dados BancoIdentidade criado com sucesso.'
+END
+ELSE
+BEGIN
+    PRINT 'Banco de dados BancoIdentidade já existe.'
+END
+GO
+
+USE [BancoIdentidade]
+GO
+
+-- =====================================================================================
+-- SEÇÃO 1: CRIAÇÃO DE LOGIN E USUÁRIO ADMIN
+-- =====================================================================================
+
+USE master
+GO
+
+-- Criar o login no servidor
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'joaocerqueira')
+BEGIN
+    CREATE LOGIN [joaocerqueira] WITH PASSWORD = N'@Joao123', 
+        DEFAULT_DATABASE=[BancoIdentidade], 
+        CHECK_EXPIRATION=OFF, 
+        CHECK_POLICY=OFF
+    PRINT 'Login joaocerqueira criado com sucesso.'
+END
+ELSE
+BEGIN
+    PRINT 'Login joaocerqueira já existe.'
+END
+GO
+
+USE [BancoIdentidade]
+GO
+
+-- Criar o usuário no banco de dados e adicionar ao db_owner
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = 'joaocerqueira')
+BEGIN
+    CREATE USER [joaocerqueira] FOR LOGIN [joaocerqueira]
+    ALTER ROLE [db_owner] ADD MEMBER [joaocerqueira]
+    PRINT 'Usuário joaocerqueira criado e adicionado ao db_owner com sucesso.'
+END
+ELSE
+BEGIN
+    -- Se o usuário já existe, garantir que está no db_owner
+    ALTER ROLE [db_owner] ADD MEMBER [joaocerqueira]
+    PRINT 'Usuário joaocerqueira já existe. Garantido acesso db_owner.'
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 2: CRIAÇÃO DE SCHEMAS
+-- =====================================================================================
+
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'Identity')
+BEGIN
+    EXEC('CREATE SCHEMA [Identity]')
+    PRINT 'Schema Identity criado com sucesso.'
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 3: CRIAÇÃO DE TABELAS - DBO SCHEMA
+-- =====================================================================================
+
+-- Tabela tbClassesDiretorio (dependência da tbDiretorio)
+PRINT 'Criando tabela [dbo].[tbClassesDiretorio]...'
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tbClassesDiretorio]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [dbo].[tbClassesDiretorio](
+        [IDClasse] [int] IDENTITY(1,1) NOT NULL,
+        [NomeClasse] [varchar](255) NOT NULL,
+        CONSTRAINT [PK_tbClassesDiretorio] PRIMARY KEY CLUSTERED ([IDClasse] ASC)
+    )
+    PRINT 'Tabela [dbo].[tbClassesDiretorio] criada com sucesso.'
+END
+GO
+
+-- ⭐ ADICIONE AQUI OS DADOS INICIAIS ⭐
+PRINT 'Inserindo dados iniciais em [dbo].[tbClassesDiretorio]...'
+GO
+
+-- Inserir classe Usuario (ID=17)
+IF NOT EXISTS (SELECT * FROM [dbo].[tbClassesDiretorio] WHERE IDClasse = 17)
+BEGIN
+    SET IDENTITY_INSERT [dbo].[tbClassesDiretorio] ON
+    INSERT INTO [dbo].[tbClassesDiretorio] (IDClasse, NomeClasse) VALUES (17, 'Usuario')
+    SET IDENTITY_INSERT [dbo].[tbClassesDiretorio] OFF
+    PRINT 'Classe Usuario (ID=17) inserida.'
+END
+GO
+
+-- Inserir classe GrupoUsuario (ID=18)
+IF NOT EXISTS (SELECT * FROM [dbo].[tbClassesDiretorio] WHERE IDClasse = 18)
+BEGIN
+    SET IDENTITY_INSERT [dbo].[tbClassesDiretorio] ON
+    INSERT INTO [dbo].[tbClassesDiretorio] (IDClasse, NomeClasse) VALUES (18, 'GrupoUsuario')
+    SET IDENTITY_INSERT [dbo].[tbClassesDiretorio] OFF
+    PRINT 'Classe GrupoUsuario (ID=18) inserida.'
+END
+GO
+
+-- Tabela tbErrosDiretorio (para log de erros)
+PRINT 'Criando tabela [dbo].[tbErrosDiretorio]...'
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tbErrosDiretorio]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [dbo].[tbErrosDiretorio](
+        [ID] [int] IDENTITY(1,1) NOT NULL,
+        [IDDiretorio] [int] NULL,
+        [IDClasse] [int] NULL,
+        [Erro] [varchar](max) NULL,
+        [Content] [varchar](max) NULL,
+        [DataErro] [datetime] NOT NULL CONSTRAINT [DF_tbErrosDiretorio_DataErro] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_tbErrosDiretorio] PRIMARY KEY CLUSTERED ([ID] ASC)
+    )
+    PRINT 'Tabela [dbo].[tbErrosDiretorio] criada com sucesso.'
+END
+GO
+
+-- Tabela tbDiretorio
+PRINT 'Criando tabela [dbo].[tbDiretorio]...'
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tbDiretorio]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [dbo].[tbDiretorio](
+        [ID] [int] IDENTITY(1,1) NOT NULL,
+        [Code] [varchar](255) NOT NULL,
+        [Name] [varchar](255) NOT NULL,
+        [IDClass] [int] NOT NULL,
+        [Date] [datetimeoffset](7) NOT NULL CONSTRAINT [DF_tbDiretorio_Date] DEFAULT (sysdatetimeoffset()),
+        [Maturity] [datetime] NOT NULL CONSTRAINT [DF_tbDiretorio_Maturity] DEFAULT ('2100-12-31'),
+        [ReadOnly] [bit] NOT NULL CONSTRAINT [DF_tbDiretorio_ReadOnly] DEFAULT ((0)),
+        [ContentXML] [xml] NULL,
+        [Content] AS (CONVERT([varchar](max),[ContentXML],(0))),
+        CONSTRAINT [PK_tbDiretorio] PRIMARY KEY CLUSTERED ([ID] ASC),
+        CONSTRAINT [UQ_tbDiretorio_Code] UNIQUE NONCLUSTERED ([Code] ASC),
+        CONSTRAINT [UQ_tbDiretorio_Name_IDClass] UNIQUE NONCLUSTERED ([Name] ASC, [IDClass] ASC),
+        CONSTRAINT [CK_tbDiretorio_Code] CHECK ((len([Code])>(0))),
+        CONSTRAINT [CK_tbDiretorio_Name] CHECK ((len([Name])>(0)))
+    )
+    PRINT 'Tabela [dbo].[tbDiretorio] criada com sucesso.'
+END
+GO
+
+-- Foreign Key para tbDiretorio
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_tbDiretorio_IDClass')
+BEGIN
+    ALTER TABLE [dbo].[tbDiretorio] WITH CHECK ADD CONSTRAINT [FK_tbDiretorio_IDClass] 
+    FOREIGN KEY([IDClass]) REFERENCES [dbo].[tbClassesDiretorio] ([IDClasse])
+    PRINT 'Foreign Key FK_tbDiretorio_IDClass criada.'
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 4: CRIAÇÃO DE TABELAS - IDENTITY SCHEMA (ASP.NET IDENTITY)
+-- =====================================================================================
+
+PRINT 'Criando tabelas do schema Identity...'
+GO
+
+-- __EFMigrationsHistory
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[__EFMigrationsHistory]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[__EFMigrationsHistory](
+        [MigrationId] [nvarchar](150) NOT NULL,
+        [ProductVersion] [nvarchar](32) NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY CLUSTERED ([MigrationId] ASC)
+    )
+    PRINT 'Tabela [Identity].[__EFMigrationsHistory] criada.'
+END
+GO
+
+-- AspNetRoles
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetRoles]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetRoles](
+        [Id] [nvarchar](450) NOT NULL,
+        [Name] [nvarchar](256) NULL,
+        [NormalizedName] [nvarchar](256) NULL,
+        [ConcurrencyStamp] [nvarchar](max) NULL,
+        CONSTRAINT [PK_AspNetRoles] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetRoles] criada.'
+END
+GO
+
+-- AspNetRoleClaims
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetRoleClaims]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetRoleClaims](
+        [Id] [int] IDENTITY(1,1) NOT NULL,
+        [RoleId] [nvarchar](450) NOT NULL,
+        [ClaimType] [nvarchar](max) NULL,
+        [ClaimValue] [nvarchar](max) NULL,
+        CONSTRAINT [PK_AspNetRoleClaims] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetRoleClaims] criada.'
+END
+GO
+
+-- AspNetUsers
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetUsers]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetUsers](
+        [Id] [nvarchar](450) NOT NULL,
+        [UserName] [nvarchar](256) NULL,
+        [NormalizedUserName] [nvarchar](256) NULL,
+        [Email] [nvarchar](256) NULL,
+        [NormalizedEmail] [nvarchar](256) NULL,
+        [EmailConfirmed] [bit] NOT NULL,
+        [PasswordHash] [nvarchar](max) NULL,
+        [SecurityStamp] [nvarchar](max) NULL,
+        [ConcurrencyStamp] [nvarchar](max) NULL,
+        [PhoneNumber] [nvarchar](max) NULL,
+        [PhoneNumberConfirmed] [bit] NOT NULL,
+        [TwoFactorEnabled] [bit] NOT NULL,
+        [LockoutEnd] [datetimeoffset](7) NULL,
+        [LockoutEnabled] [bit] NOT NULL,
+        [AccessFailedCount] [int] NOT NULL,
+        [Name] [nvarchar](max) NULL,
+        [PasswordDoesNotExpire] [bit] NULL,
+        [PasswordHistory] [nvarchar](max) NULL,
+        [CreatedAt] [datetime2](7) NOT NULL DEFAULT ('0001-01-01T00:00:00.0000000'),
+        [LastUpdatedAt] [datetime2](7) NOT NULL DEFAULT ('0001-01-01T00:00:00.0000000'),
+        [PasswordExpiration] [datetimeoffset](7) NULL,
+        [AuthenticationType] [nvarchar](max) NULL,
+        [Language] [nvarchar](max) NULL,
+        CONSTRAINT [PK_AspNetUsers] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetUsers] criada.'
+END
+GO
+
+-- AspNetUserClaims
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetUserClaims]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetUserClaims](
+        [Id] [int] IDENTITY(1,1) NOT NULL,
+        [UserId] [nvarchar](450) NOT NULL,
+        [ClaimType] [nvarchar](max) NULL,
+        [ClaimValue] [nvarchar](max) NULL,
+        CONSTRAINT [PK_AspNetUserClaims] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetUserClaims] criada.'
+END
+GO
+
+-- AspNetUserLogins
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetUserLogins]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetUserLogins](
+        [LoginProvider] [nvarchar](450) NOT NULL,
+        [ProviderKey] [nvarchar](450) NOT NULL,
+        [ProviderDisplayName] [nvarchar](max) NULL,
+        [UserId] [nvarchar](450) NOT NULL,
+        CONSTRAINT [PK_AspNetUserLogins] PRIMARY KEY CLUSTERED ([LoginProvider] ASC, [ProviderKey] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetUserLogins] criada.'
+END
+GO
+
+-- AspNetUserRoles
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetUserRoles]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetUserRoles](
+        [UserId] [nvarchar](450) NOT NULL,
+        [RoleId] [nvarchar](450) NOT NULL,
+        CONSTRAINT [PK_AspNetUserRoles] PRIMARY KEY CLUSTERED ([UserId] ASC, [RoleId] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetUserRoles] criada.'
+END
+GO
+
+-- AspNetUserTokens
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[AspNetUserTokens]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[AspNetUserTokens](
+        [UserId] [nvarchar](450) NOT NULL,
+        [LoginProvider] [nvarchar](450) NOT NULL,
+        [Name] [nvarchar](450) NOT NULL,
+        [Value] [nvarchar](max) NULL,
+        CONSTRAINT [PK_AspNetUserTokens] PRIMARY KEY CLUSTERED ([UserId] ASC, [LoginProvider] ASC, [Name] ASC)
+    )
+    PRINT 'Tabela [Identity].[AspNetUserTokens] criada.'
+END
+GO
+
+-- ConsumedMessages
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[ConsumedMessages]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[ConsumedMessages](
+        [MessageId] [nvarchar](450) NOT NULL,
+        CONSTRAINT [PK_ConsumedMessages] PRIMARY KEY CLUSTERED ([MessageId] ASC)
+    )
+    PRINT 'Tabela [Identity].[ConsumedMessages] criada.'
+END
+GO
+
+-- Permissions
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[Permissions]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[Permissions](
+        [Id] [nvarchar](450) NOT NULL,
+        [Name] [nvarchar](max) NULL,
+        CONSTRAINT [PK_Permissions] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[Permissions] criada.'
+END
+GO
+
+-- UserGroups
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[UserGroups]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[UserGroups](
+        [Id] [nvarchar](450) NOT NULL,
+        [Name] [nvarchar](450) NULL,
+        [CreatedAt] [datetime2](7) NOT NULL DEFAULT ('0001-01-01T00:00:00.0000000'),
+        [LastUpdatedAt] [datetime2](7) NOT NULL DEFAULT ('0001-01-01T00:00:00.0000000'),
+        CONSTRAINT [PK_UserGroups] PRIMARY KEY CLUSTERED ([Id] ASC)
+    )
+    PRINT 'Tabela [Identity].[UserGroups] criada.'
+END
+GO
+
+-- UserGroupPermission
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[UserGroupPermission]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[UserGroupPermission](
+        [UserGroupId] [nvarchar](450) NOT NULL,
+        [PermissionId] [nvarchar](450) NOT NULL,
+        [PermissionOperations] [int] NOT NULL DEFAULT ((0)),
+        CONSTRAINT [PK_UserGroupPermission] PRIMARY KEY CLUSTERED ([UserGroupId] ASC, [PermissionId] ASC)
+    )
+    PRINT 'Tabela [Identity].[UserGroupPermission] criada.'
+END
+GO
+
+-- UserGroupUser
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[UserGroupUser]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[UserGroupUser](
+        [UserGroupId] [nvarchar](450) NOT NULL,
+        [UserId] [nvarchar](450) NOT NULL,
+        CONSTRAINT [PK_UserGroupUser] PRIMARY KEY CLUSTERED ([UserGroupId] ASC, [UserId] ASC)
+    )
+    PRINT 'Tabela [Identity].[UserGroupUser] criada.'
+END
+GO
+
+-- UserSubstitutions
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[Identity].[UserSubstitutions]') AND type in (N'U'))
+BEGIN
+    CREATE TABLE [Identity].[UserSubstitutions](
+        [UserId] [nvarchar](450) NOT NULL,
+        [SubstituteUserId] [nvarchar](450) NOT NULL,
+        CONSTRAINT [PK_UserSubstitutions] PRIMARY KEY CLUSTERED ([UserId] ASC, [SubstituteUserId] ASC)
+    )
+    PRINT 'Tabela [Identity].[UserSubstitutions] criada.'
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 5: CRIAÇÃO DE FOREIGN KEYS - IDENTITY SCHEMA
+-- =====================================================================================
+
+PRINT 'Criando Foreign Keys do schema Identity...'
+GO
+
+-- FK AspNetRoleClaims
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetRoleClaims_AspNetRoles_RoleId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetRoleClaims] WITH CHECK ADD CONSTRAINT [FK_AspNetRoleClaims_AspNetRoles_RoleId] 
+    FOREIGN KEY([RoleId]) REFERENCES [Identity].[AspNetRoles] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK AspNetUserClaims
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetUserClaims_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetUserClaims] WITH CHECK ADD CONSTRAINT [FK_AspNetUserClaims_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK AspNetUserLogins
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetUserLogins_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetUserLogins] WITH CHECK ADD CONSTRAINT [FK_AspNetUserLogins_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK AspNetUserRoles (RoleId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetUserRoles_AspNetRoles_RoleId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetUserRoles] WITH CHECK ADD CONSTRAINT [FK_AspNetUserRoles_AspNetRoles_RoleId] 
+    FOREIGN KEY([RoleId]) REFERENCES [Identity].[AspNetRoles] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK AspNetUserRoles (UserId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetUserRoles_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetUserRoles] WITH CHECK ADD CONSTRAINT [FK_AspNetUserRoles_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK AspNetUserTokens
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_AspNetUserTokens_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[AspNetUserTokens] WITH CHECK ADD CONSTRAINT [FK_AspNetUserTokens_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK UserGroupPermission (PermissionId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserGroupPermission_Permissions_PermissionId')
+BEGIN
+    ALTER TABLE [Identity].[UserGroupPermission] WITH CHECK ADD CONSTRAINT [FK_UserGroupPermission_Permissions_PermissionId] 
+    FOREIGN KEY([PermissionId]) REFERENCES [Identity].[Permissions] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK UserGroupPermission (UserGroupId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserGroupPermission_UserGroups_UserGroupId')
+BEGIN
+    ALTER TABLE [Identity].[UserGroupPermission] WITH CHECK ADD CONSTRAINT [FK_UserGroupPermission_UserGroups_UserGroupId] 
+    FOREIGN KEY([UserGroupId]) REFERENCES [Identity].[UserGroups] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK UserGroupUser (UserId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserGroupUser_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[UserGroupUser] WITH NOCHECK ADD CONSTRAINT [FK_UserGroupUser_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+    ALTER TABLE [Identity].[UserGroupUser] CHECK CONSTRAINT [FK_UserGroupUser_AspNetUsers_UserId]
+END
+GO
+
+-- FK UserGroupUser (UserGroupId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserGroupUser_UserGroups_UserGroupId')
+BEGIN
+    ALTER TABLE [Identity].[UserGroupUser] WITH CHECK ADD CONSTRAINT [FK_UserGroupUser_UserGroups_UserGroupId] 
+    FOREIGN KEY([UserGroupId]) REFERENCES [Identity].[UserGroups] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK UserSubstitutions (SubstituteUserId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserSubstitutions_AspNetUsers_SubstituteUserId')
+BEGIN
+    ALTER TABLE [Identity].[UserSubstitutions] WITH CHECK ADD CONSTRAINT [FK_UserSubstitutions_AspNetUsers_SubstituteUserId] 
+    FOREIGN KEY([SubstituteUserId]) REFERENCES [Identity].[AspNetUsers] ([Id]) ON DELETE CASCADE
+END
+GO
+
+-- FK UserSubstitutions (UserId)
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_UserSubstitutions_AspNetUsers_UserId')
+BEGIN
+    ALTER TABLE [Identity].[UserSubstitutions] WITH CHECK ADD CONSTRAINT [FK_UserSubstitutions_AspNetUsers_UserId] 
+    FOREIGN KEY([UserId]) REFERENCES [Identity].[AspNetUsers] ([Id])
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 6: CRIAÇÃO DE ÍNDICES - IDENTITY SCHEMA
+-- =====================================================================================
+
+PRINT 'Criando índices do schema Identity...'
+GO
+
+-- Índices para AspNetRoles
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'RoleNameIndex' AND object_id = OBJECT_ID('[Identity].[AspNetRoles]'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [RoleNameIndex] ON [Identity].[AspNetRoles]([NormalizedName] ASC) 
+    WHERE ([NormalizedName] IS NOT NULL)
+    PRINT 'Índice RoleNameIndex criado.'
+END
+GO
+
+-- Índices para AspNetUsers
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'EmailIndex' AND object_id = OBJECT_ID('[Identity].[AspNetUsers]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [EmailIndex] ON [Identity].[AspNetUsers]([NormalizedEmail] ASC)
+    PRINT 'Índice EmailIndex criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UserNameIndex' AND object_id = OBJECT_ID('[Identity].[AspNetUsers]'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [UserNameIndex] ON [Identity].[AspNetUsers]([NormalizedUserName] ASC) 
+    WHERE ([NormalizedUserName] IS NOT NULL)
+    PRINT 'Índice UserNameIndex criado.'
+END
+GO
+
+-- Índices para UserGroups
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_UserGroups_Name' AND object_id = OBJECT_ID('[Identity].[UserGroups]'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [IX_UserGroups_Name] ON [Identity].[UserGroups]([Name] ASC) 
+    WHERE ([Name] IS NOT NULL)
+    PRINT 'Índice IX_UserGroups_Name criado.'
+END
+GO
+
+-- Índices para relacionamentos (Foreign Keys)
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AspNetRoleClaims_RoleId' AND object_id = OBJECT_ID('[Identity].[AspNetRoleClaims]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_AspNetRoleClaims_RoleId] ON [Identity].[AspNetRoleClaims]([RoleId] ASC)
+    PRINT 'Índice IX_AspNetRoleClaims_RoleId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AspNetUserClaims_UserId' AND object_id = OBJECT_ID('[Identity].[AspNetUserClaims]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_AspNetUserClaims_UserId] ON [Identity].[AspNetUserClaims]([UserId] ASC)
+    PRINT 'Índice IX_AspNetUserClaims_UserId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AspNetUserLogins_UserId' AND object_id = OBJECT_ID('[Identity].[AspNetUserLogins]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_AspNetUserLogins_UserId] ON [Identity].[AspNetUserLogins]([UserId] ASC)
+    PRINT 'Índice IX_AspNetUserLogins_UserId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AspNetUserRoles_RoleId' AND object_id = OBJECT_ID('[Identity].[AspNetUserRoles]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_AspNetUserRoles_RoleId] ON [Identity].[AspNetUserRoles]([RoleId] ASC)
+    PRINT 'Índice IX_AspNetUserRoles_RoleId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_UserGroupPermission_PermissionId' AND object_id = OBJECT_ID('[Identity].[UserGroupPermission]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_UserGroupPermission_PermissionId] ON [Identity].[UserGroupPermission]([PermissionId] ASC)
+    PRINT 'Índice IX_UserGroupPermission_PermissionId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_UserGroupUser_UserId' AND object_id = OBJECT_ID('[Identity].[UserGroupUser]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_UserGroupUser_UserId] ON [Identity].[UserGroupUser]([UserId] ASC)
+    PRINT 'Índice IX_UserGroupUser_UserId criado.'
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_UserSubstitutions_SubstituteUserId' AND object_id = OBJECT_ID('[Identity].[UserSubstitutions]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_UserSubstitutions_SubstituteUserId] ON [Identity].[UserSubstitutions]([SubstituteUserId] ASC)
+    PRINT 'Índice IX_UserSubstitutions_SubstituteUserId criado.'
+END
+GO
+
+-- =====================================================================================
+-- SEÇÃO 7: CRIAÇÃO DE STORED PROCEDURES
+-- =====================================================================================

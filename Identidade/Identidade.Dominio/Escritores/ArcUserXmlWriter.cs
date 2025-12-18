@@ -1,7 +1,6 @@
 ﻿using Identidade.Dominio.Extensions;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
-using Identidade.Dominio.Modelos;
 using System.Xml.Linq;
 
 namespace Identidade.Dominio.Writers

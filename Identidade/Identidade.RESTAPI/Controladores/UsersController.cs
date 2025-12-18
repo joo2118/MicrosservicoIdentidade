@@ -15,7 +15,6 @@ using Serilog;
 
 namespace Identidade.RESTAPI.Controllers
 {
-    [Authorize]
     [Route("users")]
     public class UsersController : ControllerBase
     {

@@ -1,26 +1,27 @@
 ﻿using BeatPulse;
+using Identidade.Infraestrutura.Configuracoes;
+using Identidade.Infraestrutura.Configuracoes.ServiceBus;
+using Identidade.Infraestrutura.RedisNotifier;
+using Identidade.RESTAPI.Configurations;
+using Identidade.RESTAPI.Middleware;
+using MassTransit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Logging;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Identidade.RESTAPI.Configurations;
+using Newtonsoft.Json.Converters;
 using Serilog;
 using System;
 using System.IO;
 using System.Reflection;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.Identity.Web;
-using Microsoft.IdentityModel.Logging;
-using Newtonsoft.Json.Converters;
-using Identidade.Infraestrutura.RedisNotifier;
 using System.Timers;
-using MassTransit;
-using Identidade.Infraestrutura.Configuracoes.ServiceBus;
-using Identidade.Infraestrutura.Configuracoes;
 namespace Identidade.RESTAPI
 {
     /// <summary>
@@ -71,34 +72,6 @@ namespace Identidade.RESTAPI
 
             services.AddSingleton(c => SharedConfiguration.CreateLogger(_settings));
 
-            services.AddAuthentication(opt =>
-            {
-                opt.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                opt.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-                opt.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-                .AddMicrosoftIdentityWebApi(_configuration.GetSection("AzureAd"));
-
-            services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
-            {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateAudience = true,
-                    ValidAudience = _settings.Jwt.Audience,
-                    ValidateIssuer = true,
-                    ValidIssuer = _settings.Jwt.Issuer,
-                    ValidateLifetime = true,
-                    RequireSignedTokens = true,
-                    ValidAlgorithms =
-                    [
-                      @"RS256"
-                    ],
-                    ValidateIssuerSigningKey = true,
-                };
-            });
-            IdentityModelEventSource.ShowPII = true;
-            services.AddAuthorization();
-
             services.AddSwaggerGen(c =>
             {
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -121,7 +94,6 @@ namespace Identidade.RESTAPI
                         }
                     }, Array.Empty<string>()
                 } });
-                c.IncludeXmlComments(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Assembly.GetExecutingAssembly().GetName().Name + ".XML"));
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "Identidade API", Version = "v1" });
             });
             services.AddSwaggerGenNewtonsoftSupport();
@@ -153,6 +125,8 @@ namespace Identidade.RESTAPI
             {
                 app.UseHsts();
             }
+
+            app.UseMiddleware<PerformanceMetricsMiddleware>();
 
             app.UseHttpsRedirection();
             app.UseCors();
