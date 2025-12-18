@@ -1,5 +1,10 @@
 ﻿using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 
 namespace Identidade.RESTAPI
 {
@@ -21,12 +26,50 @@ namespace Identidade.RESTAPI
         /// </summary>
         public static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
-            .UseBeatPulse(options =>
-            {
-                options.ConfigurePath(path: "health")
-                    .ConfigureTimeout(milliseconds: 1500)
-                    .ConfigureDetailedOutput(detailedOutput: true, includeExceptionMessages: true);
-            })
-            .UseStartup<Startup>();
+                .ConfigureAppConfiguration((context, config) =>
+                {
+                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                          .AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+                          .AddEnvironmentVariables();
+                })
+                .ConfigureLogging((context, logging) =>
+                {
+                    logging.ClearProviders();
+                    
+                    var connectionString = context.Configuration["ApplicationInsights:ConnectionString"];
+                    
+                    var loggerConfig = new LoggerConfiguration()
+                        .MinimumLevel.Information()
+                        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                        .MinimumLevel.Override("System", LogEventLevel.Warning)
+                        .Enrich.FromLogContext()
+                        .Enrich.WithProperty("Application", "Identidade.RESTAPI")
+                        .WriteTo.Console();
+                    
+                    if (!string.IsNullOrEmpty(connectionString))
+                    {
+                        loggerConfig.WriteTo.ApplicationInsights(
+                            connectionString,
+                            TelemetryConverter.Traces);
+                    }
+                    
+                    Log.Logger = loggerConfig.CreateLogger();
+                    logging.AddSerilog(Log.Logger);
+                })
+                .ConfigureServices((context, services) =>
+                {
+                    var connectionString = context.Configuration["ApplicationInsights:ConnectionString"];
+                    
+                    if (!string.IsNullOrEmpty(connectionString))
+                    {
+                        services.AddApplicationInsightsTelemetry(options =>
+                        {
+                            options.ConnectionString = connectionString;
+                            options.EnableAdaptiveSampling = true;
+                            options.EnableQuickPulseMetricStream = true;
+                        });
+                    }
+                })
+                .UseStartup<Startup>();
     }
 }

@@ -1,27 +1,27 @@
-﻿using BeatPulse;
-using Identidade.Infraestrutura.Configuracoes;
+﻿using Identidade.Infraestrutura.Configuracoes;
 using Identidade.Infraestrutura.Configuracoes.ServiceBus;
 using Identidade.Infraestrutura.RedisNotifier;
 using Identidade.RESTAPI.Configurations;
 using Identidade.RESTAPI.Middleware;
 using MassTransit;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Identity.Web;
-using Microsoft.IdentityModel.Logging;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json.Converters;
 using Serilog;
 using System;
 using System.IO;
-using System.Reflection;
 using System.Timers;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json;
+using System.Linq;
+
 namespace Identidade.RESTAPI
 {
     /// <summary>
@@ -98,12 +98,20 @@ namespace Identidade.RESTAPI
             });
             services.AddSwaggerGenNewtonsoftSupport();
 
-            services.AddBeatPulse(setup =>
-            {
-                var connectionString = _settings.ConnectionStrings.DefaultConnection;
-                setup.AddSqlServer(connectionString);
-                setup.AddPrivateMemoryLiveness(_settings.HealthCheck.MaxMemory);
-            });
+            // Modern ASP.NET Core Health Checks replacing BeatPulse
+            services.AddHealthChecks()
+                .AddSqlServer(
+                    connectionString: _settings.ConnectionStrings.DefaultConnection,
+                    healthQuery: "SELECT 1;",
+                    name: "sql",
+                    failureStatus: HealthStatus.Unhealthy,
+                    tags: new string[] { "db", "sql", "sqlserver" })
+                .AddPrivateMemoryHealthCheck(
+                    maximumMemoryBytes: _settings.HealthCheck.MaxMemory * 1024L * 1024L, // Convert MB to bytes
+                    name: "private_memory",
+                    failureStatus: HealthStatus.Unhealthy,
+                    tags: new string[] { "memory" });
+
             _statusNotifier.SetIdle();
         }
         /// <summary>
@@ -151,12 +159,43 @@ namespace Identidade.RESTAPI
             app.UseAuthorization();
 
             if (!env.IsEnvironment(Dominio.Modelos.Constants.cst_UnitTests))
+            {
                 app.UseEndpoints(endpoints =>
                 {
+                    endpoints.MapHealthChecks("/health", new HealthCheckOptions
+                    {
+                        ResponseWriter = async (context, report) =>
+                        {
+                            context.Response.ContentType = "application/json";
+                            
+                            var result = JsonSerializer.Serialize(new
+                            {
+                                status = report.Status.ToString(),
+                                duration = report.TotalDuration,
+                                checks = report.Entries.Select(e => new
+                                {
+                                    name = e.Key,
+                                    status = e.Value.Status.ToString(),
+                                    duration = e.Value.Duration,
+                                    description = e.Value.Description,
+                                    exception = e.Value.Exception?.Message,
+                                    data = e.Value.Data
+                                })
+                            }, new JsonSerializerOptions
+                            {
+                                WriteIndented = true
+                            });
+                            
+                            await context.Response.WriteAsync(result);
+                        },
+                        AllowCachingResponses = false
+                    });
+                    
                     endpoints.MapDefaultControllerRoute();
                     endpoints.MapControllerRoute("users", "{controller=Users}");
                     endpoints.MapControllerRoute("groups", "{controller=groups}");
                 });
+            }
         }
     }
 }

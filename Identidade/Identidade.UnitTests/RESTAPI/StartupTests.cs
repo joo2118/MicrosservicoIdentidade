@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Identidade.Infraestrutura.Data;
 using Microsoft.EntityFrameworkCore;
 using Identidade.Dominio.Servicos;
-using BeatPulse.Core;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication;
@@ -72,7 +72,10 @@ namespace Identidade.UnitTests.RESTAPI
             startup.ConfigureServices(services);
 
             var sp = services.BuildServiceProvider();
-            Assert.NotNull(sp.GetService<BeatPulseContext>());
+            
+            var healthCheckService = sp.GetService<HealthCheckService>();
+            Assert.NotNull(healthCheckService);
+            
             Assert.NotNull(sp.GetService<IAuthorizationService>());
 
             var options = sp.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(JwtBearerDefaults.AuthenticationScheme);

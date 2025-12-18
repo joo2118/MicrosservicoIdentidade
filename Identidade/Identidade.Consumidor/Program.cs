@@ -7,6 +7,7 @@ using Identidade.Consumidor.Helpers;
 using Identidade.Infraestrutura.RedisNotifier;
 using Identidade.Dominio.Interfaces;
 using Serilog;
+using Serilog.Events;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -36,10 +37,29 @@ namespace Identidade.Consumidor
                 .SetBasePath(Path.GetDirectoryName(typeof(Program).Assembly.Location))
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .AddJsonFile($"appsettings.{_environmentName}.json", optional: true, reloadOnChange: true)
+                .AddEnvironmentVariables()
                 .Build();
 
             _settings = new ConsumerSettings(configuration);
-            Log.Logger = SharedConfiguration.CreateLogger(_settings);
+            
+            var connectionString = configuration["ApplicationInsights:ConnectionString"];
+            
+            var loggerConfig = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .MinimumLevel.Override("System", LogEventLevel.Warning)
+                .Enrich.FromLogContext()
+                .Enrich.WithProperty("Application", "Identidade.Consumidor")
+                .WriteTo.Console();
+            
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                loggerConfig.WriteTo.ApplicationInsights(
+                    connectionString,
+                    TelemetryConverter.Traces);
+            }
+            
+            Log.Logger = loggerConfig.CreateLogger();
 
             _statusNotifier = new RedisStatusNotifier(new Timer(_settings.RedisSetAliveInterval), new ConnectionMultiplexerProxy(_settings, _settings.RedisUrl), RedisConstants.Path.REDIS_IDENTITYCONSUMERS, RedisConstants.Field.REDIS_FIELD_IDENTITYCONSUMERID);
             _statusNotifier.SetStarting();
@@ -48,7 +68,20 @@ namespace Identidade.Consumidor
                 .UseEnvironment(_environmentName)
                 .ConfigureHostConfiguration(cfg => cfg.AddConfiguration(configuration))
                 .ConfigureServices((hostContext, services) =>
-                    ConfigureServices(services, hostContext.HostingEnvironment.EnvironmentName))
+                {
+                    var aiConnectionString = hostContext.Configuration["ApplicationInsights:ConnectionString"];
+                    if (!string.IsNullOrEmpty(aiConnectionString))
+                    {
+                        services.AddApplicationInsightsTelemetryWorkerService(options =>
+                        {
+                            options.ConnectionString = aiConnectionString;
+                            options.EnableAdaptiveSampling = true;
+                            options.EnableQuickPulseMetricStream = true;
+                        });
+                    }
+                    
+                    ConfigureServices(services, hostContext.HostingEnvironment.EnvironmentName);
+                })
                 .ConfigureLogging(ConfigureLogging);
 
             if (_environmentName == Environments.Development)
@@ -98,8 +131,8 @@ namespace Identidade.Consumidor
             if (_environmentName == "Tests")
                 return;
 
-            var logger = SharedConfiguration.CreateLogger(_settings);
-            loggingBuilder.AddSerilog(logger, true);
+            loggingBuilder.ClearProviders();
+            loggingBuilder.AddSerilog(Log.Logger, dispose: true);
         }
     }
 }

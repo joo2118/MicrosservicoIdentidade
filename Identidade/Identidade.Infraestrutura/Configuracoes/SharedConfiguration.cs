@@ -1,27 +1,28 @@
 ﻿using AutoMapper;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Elastic.Ingest.Elasticsearch;
+using Elastic.Serilog.Sinks;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
 using Identidade.Dominio.Writers;
+using Identidade.Infraestrutura.Adaptadores;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Data;
 using Identidade.Infraestrutura.Factory;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Infraestrutura.Interfaces;
 using Identidade.Infraestrutura.Services;
+using Identidade.Infraestrutura.Servicos;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog;
-using Serilog.Sinks.Elasticsearch;
 using System;
 using System.Linq;
 using ILogger = Serilog.ILogger;
-using Identidade.Infraestrutura.Adaptadores;
-using Identidade.Infraestrutura.Servicos;
 
 namespace Identidade.Infraestrutura.Configuracoes
 {
@@ -123,15 +124,27 @@ namespace Identidade.Infraestrutura.Configuracoes
                 .MinimumLevel.Is(settings.Logging.LogLevel);
 
             if (settings.Logging.WriteToFile)
-                loggerConfig.WriteTo.RollingFile(settings.Logging.FilePath);
+                loggerConfig.WriteTo.File(
+                    settings.Logging.FilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 31);
 
             if (settings.Logging.WriteToElasticSearch)
-                loggerConfig.WriteTo.Elasticsearch(
-                    new ElasticsearchSinkOptions(new Uri(settings.Logging.ElasticSearchAddress))
+            {
+                try
+                {
+                    loggerConfig.WriteTo.Elasticsearch(new[] { new Uri(settings.Logging.ElasticSearchAddress) }, opts =>
                     {
-                        MinimumLogEventLevel = settings.Logging.LogLevel,
-                        AutoRegisterTemplate = true
+                        opts.MinimumLevel = settings.Logging.LogLevel;
+                        opts.BootstrapMethod = BootstrapMethod.Silent; // Changed from Failure to Silent
                     });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to configure Elasticsearch logging: {ex.Message}");
+                    Console.WriteLine("Application will continue without Elasticsearch logging.");
+                }
+            }
 
             return loggerConfig.CreateLogger();
         }
