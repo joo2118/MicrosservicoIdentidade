@@ -1,12 +1,15 @@
-﻿using System;
+﻿using Identidade.Consumidor.Consumidores;
+using Identidade.Consumidor.Helpers;
+using MassTransit;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
+using NSubstitute;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MassTransit;
-using NSubstitute;
-using Identidade.Consumidor.Helpers;
 using Xunit;
-using Identidade.Consumidor.Consumidores;
 
 namespace Identidade.Consumidor.Tests
 {
@@ -19,7 +22,14 @@ namespace Identidade.Consumidor.Tests
             var context = new TestContext();
             messageManager.VerifyMessageAlreadyConsumed(Arg.Any<Guid>()).Returns(true);
 
-            var consumer = new TestConsumer(messageManager);
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            var telemetryClient = new TelemetryClient(telemetryConfiguration);
+
+            var consumer = new TestConsumer(messageManager, telemetryClient);
 
             await consumer.Consume(context);
 
@@ -30,19 +40,29 @@ namespace Identidade.Consumidor.Tests
         public async Task Consume_MessageNotConsumed_ConsumesContext()
         {
             var messageManager = Substitute.For<IMessageManager>();
-            var context = new TestContext();
-            messageManager.VerifyMessageAlreadyConsumed(Arg.Any<Guid>()).Returns(false);
+            messageManager.VerifyMessageAlreadyConsumed(Arg.Any<Guid>())
+                          .Returns(false);
 
-            var consumer = new TestConsumer(messageManager);
+            var context = new TestContext();
+
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            var telemetryClient = new TelemetryClient(telemetryConfiguration);
+
+            var consumer = new TestConsumer(messageManager, telemetryClient);
 
             await consumer.Consume(context);
 
-            await messageManager.Received(1).SaveMessageId(Arg.Any<Guid?>());
+            await messageManager.Received(1)
+                .SaveMessageId(Arg.Any<Guid?>());
         }
 
         private class TestConsumer : ConsumidorBase<TestMessage>
         {
-            public TestConsumer(IMessageManager messageManager) : base(messageManager) { }
+            public TestConsumer(IMessageManager messageManager, TelemetryClient telemetryClient) : base(messageManager, telemetryClient) { }
 
             public override Task ConsumeContext(ConsumeContext<TestMessage> context)
             {

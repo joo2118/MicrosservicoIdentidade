@@ -17,7 +17,6 @@ namespace Identidade.UnitTests.Infraestrutura.Data
         public void Map_InputUserDtoToUser()
         {
             var password = "password";
-            var hashedPassword = "hashedPassword";
             var userGroup = "group1";
             var substituteUser = "subUser1";
             var login = "testUser";
@@ -53,7 +52,7 @@ namespace Identidade.UnitTests.Infraestrutura.Data
             Assert.NotNull(user.UserSubstitutions);
             Assert.Single(user.UserSubstitutions);
 
-            Assert.Equal(hashedPassword, user.PasswordHash);
+            Assert.Equal(password, user.PasswordHash);
             Assert.Equal(login, user.UserName);
             Assert.Equal(inputUserDto.Email, user.Email);
         }
@@ -62,7 +61,6 @@ namespace Identidade.UnitTests.Infraestrutura.Data
         public void Map_InputUserDtoToUser_InactiveAndNoUserGroupsAndSubstitute()
         {
             var password = "password";
-            var hashedPassword = "hashedPassword";
             var login = "testUser";
 
             var inputUserDto = new InputUserDto
@@ -93,12 +91,12 @@ namespace Identidade.UnitTests.Infraestrutura.Data
             Assert.Empty(user.UserSubstitutions);
             Assert.Equal(DateTimeOffset.MaxValue, user.LockoutEnd);
 
-            Assert.Equal(hashedPassword, user.PasswordHash);
+            Assert.Equal(password, user.PasswordHash);
             Assert.Equal(login, user.UserName);
             Assert.Equal(inputUserDto.Email, user.Email);
 
             Assert.Equal(inputUserDto.Login, user.UserName);
-            Assert.Equal(hashedPassword, user.PasswordHash);
+            Assert.Equal(password, user.PasswordHash);
             Assert.Equal(inputUserDto.Email, user.Email);
         }
 
@@ -180,7 +178,6 @@ namespace Identidade.UnitTests.Infraestrutura.Data
         public void Map_ArcUserDtoToUser()
         {
             var password = "password";
-            var hashedPassword = "hashedPassword";
             var userGroup = "group1";
             var substituteUser = "subUser1";
             var login = "testUser";
@@ -219,7 +216,7 @@ namespace Identidade.UnitTests.Infraestrutura.Data
             Assert.Equal(DateTimeOffset.MinValue, user.LockoutEnd);
 
             Assert.Equal(arcUserDto.Login, user.UserName);
-            Assert.Equal(hashedPassword, user.PasswordHash);
+            Assert.Equal(password, user.PasswordHash);
             Assert.Equal(arcUserDto.Email, user.Email);
         }
 
@@ -227,7 +224,6 @@ namespace Identidade.UnitTests.Infraestrutura.Data
         public void Map_ArcUserDtoToUser_InactiveAndNoUserGroupsAndSubstitute()
         {
             var password = "password";
-            var hashedPassword = "hashedPassword";
             var login = "testUser";
             var email = "test@example.com";
 
@@ -258,7 +254,7 @@ namespace Identidade.UnitTests.Infraestrutura.Data
             Assert.Equal(DateTimeOffset.MaxValue, user.LockoutEnd);
 
             Assert.Equal(arcUserDto.Login, user.UserName);
-            Assert.Equal(hashedPassword, user.PasswordHash);
+            Assert.Equal(password, user.PasswordHash);
             Assert.Equal(arcUserDto.Email, user.Email);
         }
 

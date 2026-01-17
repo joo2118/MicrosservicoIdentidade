@@ -6,16 +6,20 @@ using Identidade.Publico.Dtos;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
+using Microsoft.ApplicationInsights;
+using Serilog;
+using Identidade.RESTAPI.Controladores;
 
 namespace Identidade.RESTAPI.Controllers
 {
     [Authorize]
     [Route("permissions")]
-    public class PermissionsController : ControllerBase
+    public class PermissionsController : BaseController
     {
         private readonly IPermissionClientService _permissionService;
 
-        public PermissionsController(IPermissionClientService permissionService)
+        public PermissionsController(IPermissionClientService permissionService, TelemetryClient telemetryClient, ILogger logger)
+            : base(telemetryClient, logger)
         {
             _permissionService = permissionService;
         }
@@ -29,15 +33,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetById(string permissionId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var permissionDto = await _permissionService.GetById(permissionId);
-                return Ok(permissionDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var permissionDto = await _permissionService.GetById(permissionId);
+                    return Ok(permissionDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetPermissionById", new Dictionary<string, string> { { "PermissionId", permissionId } });
         }
 
         /// <summary>
@@ -53,15 +60,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Get([FromQuery(Name = "name")] string permissionName)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var permissionDtos = await _permissionService.Get(permissionName);
-                return Ok(permissionDtos);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var permissionDtos = await _permissionService.Get(permissionName);
+                    return Ok(permissionDtos);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetPermissions", new Dictionary<string, string> { { "PermissionNameFilter", permissionName } });
         }
 
         /// <summary>
@@ -73,15 +83,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetUserGroups(string permissionId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userGroupDtos = await _permissionService.GetUserGroups(permissionId);
-                return Ok(userGroupDtos);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var userGroupDtos = await _permissionService.GetUserGroups(permissionId);
+                    return Ok(userGroupDtos);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetPermissionUserGroups", new Dictionary<string, string> { { "PermissionId", permissionId } });
         }
     }
 }

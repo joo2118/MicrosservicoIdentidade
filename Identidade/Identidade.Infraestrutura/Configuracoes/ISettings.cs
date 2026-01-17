@@ -12,6 +12,7 @@ namespace Identidade.Infraestrutura.Configuracoes
         MessageBroker MessageBroker { get; }
         string CryptoKey { get; }
         BaselineMetrics BaselineMetrics { get; }
+        ApplicationInsightsSettings ApplicationInsights { get; }
     }
 
     public class BaselineMetrics
@@ -25,6 +26,14 @@ namespace Identidade.Infraestrutura.Configuracoes
             EnableMetricsCollection = enableMetricsCollection;
             MetricsOutputPath = metricsOutputPath;
             MetricsSamplingIntervalSeconds = metricsSamplingIntervalSeconds;
+        }
+    }
+    public class ApplicationInsightsSettings
+    {
+        public string ConnectionString { get; }
+        public ApplicationInsightsSettings(string connectionString)
+        {
+            ConnectionString = connectionString;
         }
     }
 }

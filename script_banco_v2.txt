@@ -577,3 +577,233 @@ GO
 -- =====================================================================================
 -- SEÇÃO 7: CRIAÇÃO DE STORED PROCEDURES
 -- =====================================================================================
+
+CREATE PROCEDURE [dbo].[spAtualizaItemDiretorio] (
+	@Prefixo varchar(3),
+	@Codigo varchar(255),
+	@Nome varchar(255),
+	@IDClasse int,
+	@Vencimento datetime,
+	@Content xml,
+	@SomenteLeitura bit,
+	@ID int output,
+	@CodigoGerado varchar(255) output,
+	@FoiAlterado bit output,
+	@Erro varchar(max) output
+)
+as
+begin
+	set nocount on
+	set xact_abort on
+	
+	begin tran
+
+	declare @NomeAntigo varchar(255)
+	declare @IDClasseAntigo int
+	declare @VencimentoAntigo datetime
+	declare @ContentXMLAntigo xml
+	declare @SomenteLeituraAntiga bit
+	
+	if len (@Codigo) = 0
+	begin
+		declare @MaxID int
+		select @MaxID = max(ID) + 1
+		from tbDiretorio
+
+		set @CodigoGerado = @Prefixo + cast (@MaxID as varchar)
+	end
+	else
+	begin
+		select
+			@ID = ID,
+			@NomeAntigo = Name,
+			@IDClasseAntigo = IDClass,
+			@VencimentoAntigo = Maturity,
+			@ContentXMLAntigo = ContentXML,
+			@SomenteLeituraAntiga = ReadOnly			
+		from tbDiretorio
+		where Code = @Codigo
+		
+		set @CodigoGerado = @Codigo
+	end
+
+	begin try
+		if ISNULL(@ID, -1) <= 0
+		begin
+			insert into tbDiretorio (Code, Name, IDClass, Maturity, ContentXML, ReadOnly)
+			values (@CodigoGerado, @Nome, @IDClasse, @Vencimento, @Content, @SomenteLeitura)
+
+			select @ID = SCOPE_IDENTITY()
+		end
+		else
+		begin
+			if @IDClasse = 0
+				update tbDiretorio 
+				set 
+					ContentXML = @Content,
+					Date = sysdatetimeoffset()
+				where Code = @Codigo
+
+			else
+			begin
+			--Otimizar esse IF, para executar com collate CS apenas com IDClasse = 40
+				if cast(@ContentXMLAntigo as varchar(max))collate SQL_Latin1_General_CP1_CS_AS <> cast(@Content as varchar(max)) collate SQL_Latin1_General_CP1_CS_AS
+				begin
+					update tbDiretorio 
+					set 
+						Name = @Nome, 
+						IDClass = @IDClasse, 
+						Maturity = @Vencimento, 
+						ContentXML = @Content, 
+						ReadOnly = @SomenteLeitura,
+						Date = sysdatetimeoffset()
+					where ID = @ID
+				end
+				else
+				begin
+					if (@NomeAntigo <> @Nome)
+					and (@IDClasseAntigo <> @IDClasse)
+					and (@VencimentoAntigo <> @Vencimento)
+						update tbDiretorio 
+						set 
+							Name = @Nome, 
+							IDClass = @IDClasse, 
+							Maturity = @Vencimento, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@NomeAntigo <> @Nome)
+					and (@IDClasseAntigo <> @IDClasse)
+						update tbDiretorio 
+						set 
+							Name = @Nome, 
+							IDClass = @IDClasse, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@NomeAntigo <> @Nome)
+					and (@VencimentoAntigo <> @Vencimento)
+						update tbDiretorio 
+						set 
+							Name = @Nome, 
+							Maturity = @Vencimento, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@IDClasseAntigo <> @IDClasse)
+					and (@VencimentoAntigo <> @Vencimento)
+						update tbDiretorio 
+						set 
+							IDClass = @IDClasse, 
+							Maturity = @Vencimento, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@NomeAntigo <> @Nome)
+						update tbDiretorio 
+						set 
+							Name = @Nome, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@IDClasseAntigo <> @IDClasse)
+						update tbDiretorio 
+						set 
+							IDClass = @IDClasse, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if (@VencimentoAntigo <> @Vencimento)
+						update tbDiretorio 
+						set 
+							Maturity = @Vencimento, 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+
+					else if(@SomenteLeituraAntiga <> @SomenteLeitura)
+						update tbDiretorio 
+						set 
+							ReadOnly = @SomenteLeitura,
+							Date = sysdatetimeoffset()
+						where ID = @ID
+				end
+			end
+		end
+		
+		if (@@ROWCOUNT > 0)
+			set @FoiAlterado = 1
+		else 
+			set @FoiAlterado = 0
+		
+		set @Erro = ''
+	end try
+	begin catch
+		set @ID = ISNULL(@ID, -1)
+		set @Erro = ERROR_MESSAGE()
+
+		if (XACT_STATE()) = -1
+			rollback;
+		if (XACT_STATE()) = 1 and @@TRANCOUNT = 0
+			rollback
+		if (XACT_STATE()) = 1 and @@trancount > 0 				
+			rollback;
+
+		insert into tbErrosDiretorio (IDDiretorio, IDClasse, Erro, Content)
+		values (@ID, @IDClasse, @Erro, cast(@Content as varchar(max)))
+
+	end catch
+	
+	if @@TRANCOUNT > 0
+		commit tran
+	set nocount on
+end
+GO
+
+
+CREATE procedure [dbo].[spRemoveItemDiretorio] (
+	@ID int = null,
+	@Codigo varchar(255) = null,
+	@IDClasse int = null,
+	@FoiAlterado bit output
+)
+as
+begin
+	set nocount on
+	set xact_abort on
+
+	begin tran
+	
+	if (@ID > 0)
+		delete
+		from tbDiretorio
+		where (ID = @ID)
+	
+	else if (LEN(@Codigo) > 0)
+		delete
+		from tbDiretorio
+		where (Code = @Codigo)
+		
+	else if (@IDClasse > 0)
+		delete
+		from tbDiretorio
+		where (IDClass = @IDClasse)
+		
+	if (@@ROWCOUNT > 0)
+		set @FoiAlterado = 1
+	else 
+		set @FoiAlterado = 0
+		
+	if @@TRANCOUNT > 0
+		commit tran
+	set nocount off
+end
+GO
+
+

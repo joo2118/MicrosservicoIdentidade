@@ -4,6 +4,10 @@ using Identidade.Infraestrutura.Interfaces;
 using Identidade.Publico.Dtos;
 using System;
 using Identidade.Infraestrutura.Extensoes;
+using Microsoft.ApplicationInsights;
+using Serilog;
+using System.Threading.Tasks;
+using Identidade.RESTAPI.Controladores;
 
 namespace Identidade.RESTAPI.Controllers
 {
@@ -11,14 +15,15 @@ namespace Identidade.RESTAPI.Controllers
     /// Controller for HealthCheck purpose
     /// </summary>
     [Route("healthcheck")]
-    public class HealthCheckController : ControllerBase
+    public class HealthCheckController : BaseController
     {
         private readonly IHealthCheckService _healthCheckService;
 
         /// <summary>
         /// Constructor.
         /// </summary>
-        public HealthCheckController(IHealthCheckService healthCheckService)
+        public HealthCheckController(IHealthCheckService healthCheckService, TelemetryClient telemetryClient, ILogger logger)
+            : base(telemetryClient, logger)
         {
             _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
         }
@@ -30,9 +35,12 @@ namespace Identidade.RESTAPI.Controllers
         [Route("ping")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-        public ActionResult RespondPing()
+        public async Task<IActionResult> RespondPing()
         {
-            return Ok();
+            return await ExecuteAsync(async () =>
+            {
+                return await Task.FromResult(Ok());
+            }, "Ping");
         }
 
         /// <summary>
@@ -41,10 +49,13 @@ namespace Identidade.RESTAPI.Controllers
         [HttpGet]
         [ProducesResponseType(typeof(HealthCheckValuesDto), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-        public ActionResult ExecuteHealthCheck()
+        public async Task<IActionResult> ExecuteHealthCheck()
         {
-            var values = _healthCheckService.Execute();
-            return Ok(values.ToDto());
+            return await ExecuteAsync(async () =>
+            {
+                var values = _healthCheckService.Execute();
+                return await Task.FromResult(Ok(values.ToDto()));
+            }, "ExecuteHealthCheck");
         }
     }
 }

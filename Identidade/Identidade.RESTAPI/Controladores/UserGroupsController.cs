@@ -8,17 +8,21 @@ using Identidade.Dominio.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Identidade.Dominio.Interfaces;
 using System;
+using Microsoft.ApplicationInsights;
+using Serilog;
+using Identidade.RESTAPI.Controladores;
 
 namespace Identidade.RESTAPI.Controllers
 {
     [Authorize]
     [Route("groups")]
-    public class UserGroupsController : ControllerBase
+    public class UserGroupsController : BaseController
     {
         private readonly IUserGroupClientService _userGroupService;
         private readonly ICredentialsFactory _credentialsFactory;
 
-        public UserGroupsController(IUserGroupClientService userGroupService, ICredentialsFactory credentialsFactory)
+        public UserGroupsController(IUserGroupClientService userGroupService, ICredentialsFactory credentialsFactory, TelemetryClient telemetryClient, ILogger logger)
+            : base(telemetryClient, logger)
         {
             _userGroupService = userGroupService ?? throw new ArgumentNullException(nameof(userGroupService));
             _credentialsFactory = credentialsFactory ?? throw new ArgumentNullException(nameof(credentialsFactory));
@@ -37,25 +41,28 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Create([FromBody] InputUserGroupDto userGroupDto, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var createdUserGroupDto = await _userGroupService.Create(userGroupDto, credentials.UserLogin);
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var createdUserGroupDto = await _userGroupService.Create(userGroupDto, credentials.UserLogin);
 
-                return Created(credentials.UserLogin, createdUserGroupDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (ConflictAppException e)
-            {
-                return Conflict(e.Errors);
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
+                    return Created(credentials.UserLogin, createdUserGroupDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (ConflictAppException e)
+                {
+                    return Conflict(e.Errors);
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "CreateUserGroup", new Dictionary<string, string> { { "UserGroupName", userGroupDto?.Name } });
         }
 
         /// <summary>
@@ -69,16 +76,19 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Delete(string userGroupId, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                await _userGroupService.Delete(userGroupId, credentials.UserLogin);
-                return NoContent();
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    await _userGroupService.Delete(userGroupId, credentials.UserLogin);
+                    return NoContent();
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "DeleteUserGroup", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -99,20 +109,23 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Update(string userGroupId, [FromBody] InputUserGroupDto userGroupDto, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var updatedUserGroup = await _userGroupService.Update(userGroupId, userGroupDto, credentials.UserLogin);
-                return Ok(updatedUserGroup);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var updatedUserGroup = await _userGroupService.Update(userGroupId, userGroupDto, credentials.UserLogin);
+                    return Ok(updatedUserGroup);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "UpdateUserGroup", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -124,15 +137,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetById(string userGroupId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userGroupDto = await _userGroupService.GetById(userGroupId);
-                return Ok(userGroupDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var userGroupDto = await _userGroupService.GetById(userGroupId);
+                    return Ok(userGroupDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserGroupById", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -148,15 +164,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Get([FromQuery] string userGroupName)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userGroupDto = await _userGroupService.Get(userGroupName);
-                return Ok(userGroupDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var userGroupDto = await _userGroupService.Get(userGroupName);
+                    return Ok(userGroupDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserGroups", new Dictionary<string, string> { { "UserGroupNameFilter", userGroupName } });
         }
 
         /// <summary>
@@ -168,15 +187,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetPermissions(string userGroupId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var permissionsDto = await _userGroupService.GetPermissions(userGroupId);
-                return Ok(permissionsDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var permissionsDto = await _userGroupService.GetPermissions(userGroupId);
+                    return Ok(permissionsDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserGroupPermissions", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -191,16 +213,19 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> AddPermissions(string userGroupId, [FromBody] IReadOnlyCollection<InputPermissionDto> permissions, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var userGroupDto = await _userGroupService.AddPermissions(userGroupId, permissions, credentials.UserLogin);
-                return Ok(userGroupDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var userGroupDto = await _userGroupService.AddPermissions(userGroupId, permissions, credentials.UserLogin);
+                    return Ok(userGroupDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "AddPermissionsToUserGroup", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -215,16 +240,19 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> DeletePermissions(string userGroupId, [FromBody] IReadOnlyCollection<string> permissionsIds, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var userGroupDto = await _userGroupService.DeletePermissions(userGroupId, permissionsIds, credentials.UserLogin);
-                return Ok(userGroupDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var userGroupDto = await _userGroupService.DeletePermissions(userGroupId, permissionsIds, credentials.UserLogin);
+                    return Ok(userGroupDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "DeletePermissionsFromUserGroup", new Dictionary<string, string> { { "UserGroupId", userGroupId } });
         }
     }
 }

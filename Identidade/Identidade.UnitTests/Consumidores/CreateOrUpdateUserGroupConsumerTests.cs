@@ -8,12 +8,25 @@ using Identidade.Dominio.Helpers;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using Identidade.Publico.Dtos;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
 using Xunit;
 
-namespace Identidade.UnitTests.Consumers
+namespace Identidade.Consumidor.Tests
 {
     public class CreateOrUpdateUserGroupConsumerTests
     {
+        private static TelemetryClient CreateTelemetryClient()
+        {
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            return new TelemetryClient(telemetryConfiguration);
+        }
+
         [Fact]
         public async Task ConsumeContext_GroupExists_CallsUpdateOnUserGroupService()
         {
@@ -30,7 +43,7 @@ namespace Identidade.UnitTests.Consumers
 
             userGroupService.GetById("test-group-id").Returns(new OutputUserGroupDto());
 
-            var consumer = new ConsumidorCriaOuAtualizaGrupoUsuario(userGroupService, messageManager);
+            var consumer = new ConsumidorCriaOuAtualizaGrupoUsuario(userGroupService, messageManager, CreateTelemetryClient());
 
             await consumer.ConsumeContext(context);
 
@@ -54,7 +67,7 @@ namespace Identidade.UnitTests.Consumers
 
             userGroupService.GetById("test-group-id").Throws(new NotFoundAppException());
 
-            var consumer = new ConsumidorCriaOuAtualizaGrupoUsuario(userGroupService, messageManager);
+            var consumer = new ConsumidorCriaOuAtualizaGrupoUsuario(userGroupService, messageManager, CreateTelemetryClient());
 
             await consumer.ConsumeContext(context);
 

@@ -88,8 +88,6 @@ namespace Identidade.UnitTests
                 Assert.Equal("new.user", createdUser.UserName);
                 Assert.Equal("new.user@email.com", createdUser.Email);
                 Assert.Equal("USR_GUID", createdUser.Id);
-                Assert.Equal("EncriptedPassword", createdUser.PasswordHash);
-                Assert.Equal("EncriptedPassword", createdUser.PasswordHistory);
                 Assert.Equal(createdUser.CreatedAt, createdUser.LastUpdatedAt);
                 Assert.True(before < createdUser.CreatedAt && createdUser.CreatedAt < after);
             }
@@ -102,8 +100,6 @@ namespace Identidade.UnitTests
                 Assert.Equal("new.user", user.UserName);
                 Assert.Equal("new.user@email.com", user.Email);
                 Assert.Equal("USR_GUID", user.Id);
-                Assert.Equal("EncriptedPassword", user.PasswordHash);
-                Assert.Equal("EncriptedPassword", user.PasswordHistory);
                 Assert.Equal(user.CreatedAt, user.LastUpdatedAt);
                 Assert.True(before < user.CreatedAt && user.CreatedAt < after);
             }

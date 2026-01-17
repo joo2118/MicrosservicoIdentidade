@@ -1,4 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -9,32 +12,44 @@ using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
-using Identidade.RESTAPI.Controllers;
 using Identidade.UnitTests.Helpers;
 using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
+using Identidade.RESTAPI.Controladores;
 
 namespace Identidade.UnitTests.RESTAPI.Controllers
 {
     public class UsersControllerTests
     {
+        private static TelemetryClient CreateTelemetryClient()
+        {
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            return new TelemetryClient(telemetryConfiguration);
+        }
+
         public static IEnumerable<object?[]> GetUsersControllersConstructorTestParameters()
         {
             return ParameterTestHelper.GetParameters(s => s
                 .AddNullableParameter("userService", Substitute.For<IUserClientService>())
                 .AddNullableParameter("credentialsFactory", Substitute.For<ICredentialsFactory>())
-                .AddNullableParameter("logger", Substitute.For<ILogger>()));
+                .AddNullableParameter("logger", Substitute.For<ILogger>())
+                .AddNullableParameter("telemetryClient", CreateTelemetryClient()));
         }
 
         [Theory]
         [MemberData(nameof(GetUsersControllersConstructorTestParameters))]
         public void UsersControllersConstructorTest(IUserClientService userService, ICredentialsFactory credentialsFactory, ILogger logger,
+            TelemetryClient telemetryClient,
             string? missingParameterName = null)
         {
-            UsersController Create() => new UsersController(userService, credentialsFactory, logger);
+            UsersController Create() => new UsersController(userService, credentialsFactory, logger, telemetryClient);
 
             if (string.IsNullOrWhiteSpace(missingParameterName))
             {
@@ -115,7 +130,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
                 .Merge(currentUser, password, patchUser)
                 .Returns(mergedUser);
 
-            var usersController = new UsersController(mqUserService, mqCredentialsFactory, Substitute.For<ILogger>());
+            var usersController = new UsersController(mqUserService, mqCredentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actual = usersController.Patch(userId, patchUser, authorization, mqPatchUserMerger).Result as ObjectResult;
 
             Assert.Equal(StatusCodes.Status200OK, actual.StatusCode);
@@ -130,7 +145,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var mqCredentialsFactory = Substitute.For<ICredentialsFactory>();
 
-            var usersController = new UsersController(Substitute.For<IUserClientService>(), mqCredentialsFactory, Substitute.For<ILogger>());
+            var usersController = new UsersController(Substitute.For<IUserClientService>(), mqCredentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actual = usersController.Patch(userId, (PatchUserDto)null, authorization, Substitute.For<IPatchUserMerger>()).Result as ObjectResult;
 
             Assert.Equal(StatusCodes.Status400BadRequest, actual.StatusCode);
@@ -156,7 +171,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
                 .Create(authorization)
                 .Returns(credentials);
 
-            var usersController = new UsersController(Substitute.For<IUserClientService>(), mqCredentialsFactory, Substitute.For<ILogger>());
+            var usersController = new UsersController(Substitute.For<IUserClientService>(), mqCredentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actual = usersController.Patch(userId, patchUser, authorization, Substitute.For<IPatchUserMerger>()).Result as ObjectResult;
 
             Assert.Equal(StatusCodes.Status404NotFound, actual.StatusCode);
@@ -188,7 +203,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
                 .When(x => x.GetById(userId, out Arg.Any<string>()))
                 .Do(x => throw new Exception("TestException"));
 
-            var usersController = new UsersController(mqUserService, mqCredentialsFactory, Substitute.For<ILogger>());
+            var usersController = new UsersController(mqUserService, mqCredentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actual = usersController.Patch(userId, patchUser, authorization, Substitute.For<IPatchUserMerger>()).Result as ObjectResult;
 
             Assert.Equal(StatusCodes.Status500InternalServerError, actual.StatusCode);
@@ -207,7 +222,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var userServiceMock = Substitute.For<IUserClientService>();
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Delete(userId, authorization);
 
             var notFoundResult = Assert.IsType<NoContentResult>(actionResult);
@@ -228,7 +243,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var userServiceMock = Substitute.For<IUserClientService>();
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Delete(userId, authorization, requestUser);
 
             var notFoundResult = Assert.IsType<NoContentResult>(actionResult);
@@ -250,7 +265,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             userServiceMock.When(x => x.Delete(userId, credentials.UserLogin))
                            .Do(x => throw new NotFoundAppException("User not found."));
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Delete(userId, authorization);
 
             var notFoundResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -266,7 +281,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.GetById(userId).Returns(expectedUserDto);
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.GetById(userId);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -282,7 +297,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.GetById(userId).Throws(new NotFoundAppException("User not found."));
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.GetById(userId);
 
             Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -301,7 +316,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.Get(loginQuery).Returns(expectedUsersDto);
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Get(loginQuery);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -317,7 +332,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.Get(loginQuery).Throws(new NotFoundAppException("Test not found exception"));
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Get(loginQuery);
 
             var okObjectResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -337,7 +352,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.GetUserGroups(userId).Returns(expectedGroupsDto);
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.GetUserGroups(userId);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -353,7 +368,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.GetUserGroups(userId).Throws(new AppException("Test bad request"));
 
-            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, Substitute.For<ICredentialsFactory>(), Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.GetUserGroups(userId);
 
             var okObjectResult = Assert.IsType<BadRequestObjectResult>(actionResult);
@@ -380,7 +395,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.Update(userId, arcUserDto, credentials.UserLogin).Returns(updatedUserDto);
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Update(userId, arcUserDto, authorization);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -409,7 +424,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserClientService>();
             userServiceMock.Update(userId, arcUserDto, credentials.UserLogin).Returns(updatedUserDto);
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Update(userId, arcUserDto, authorization, requestUser);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -427,7 +442,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var userServiceMock = Substitute.For<IUserClientService>();
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Update(userId, (ArcUserDto)null, authorization);
 
             var notFoundResult = Assert.IsType<BadRequestObjectResult>(actionResult);
@@ -454,7 +469,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             userServiceMock.When(x => x.Update(userId, arcUserDto, credentials.UserLogin))
                            .Do(x => throw new NotFoundAppException("User not found."));
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Update(userId, arcUserDto, authorization);
 
             var notFoundResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -481,7 +496,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             userServiceMock.When(x => x.Update(userId, arcUserDto, credentials.UserLogin))
                            .Do(x => throw new Exception("Internal server error"));
 
-            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>());
+            var usersController = new UsersController(userServiceMock, credentialsFactoryMock, Substitute.For<ILogger>(), CreateTelemetryClient());
             var actionResult = await usersController.Update(userId, arcUserDto, authorization);
 
             var internalServerErrorResult = Assert.IsType<ObjectResult>(actionResult);
@@ -502,7 +517,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Returns(createdUserDto);
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -529,7 +544,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Returns(createdUserDto);
             _credentialsFactory.Create(authorization, requestUser).Returns(new Credentials("tenantId", "userLogin"));
@@ -548,7 +563,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
 
@@ -571,7 +586,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Throws(new NotFoundAppException("User not found."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -595,7 +610,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Throws(new ConflictAppException("Conflict test."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -619,7 +634,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Throws(new AppException("App Exception test."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -643,7 +658,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.Create(arcUserDto, Arg.Any<string>()).Throws(exception);
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -664,7 +679,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.AssociateToUserGroup(userId, userGroupId, Arg.Any<string>()).Returns(Task.CompletedTask);
 
@@ -683,7 +698,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.AssociateToUserGroup(userId, userGroupId, Arg.Any<string>()).Throws(new AppException("Bad Request"));
 
@@ -702,7 +717,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.DissociateFromUserGroup(userId, userGroupId, Arg.Any<string>()).Returns(Task.CompletedTask);
 
@@ -721,7 +736,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.DissociateFromUserGroup(userId, userGroupId, Arg.Any<string>()).Throws(new NotFoundAppException("User or group not found"));
 
@@ -740,7 +755,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _userService = Substitute.For<IUserClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>());
+            var _controller = new UsersController(_userService, _credentialsFactory, Substitute.For<ILogger>(), CreateTelemetryClient());
 
             _userService.DissociateFromUserGroup(userId, userGroupId, Arg.Any<string>()).Throws(new AppException("Bad Request"));
 

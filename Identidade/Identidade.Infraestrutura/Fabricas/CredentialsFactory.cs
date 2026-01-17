@@ -8,9 +8,8 @@ using System.Linq;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Interfaces;
 using System.Collections.Generic;
-using Identidade.Dominio.Modelos;
 
-namespace Identidade.Infraestrutura.Factory
+namespace Identidade.Infraestrutura.Fabricas
 {
     public class CredentialsFactory : ICredentialsFactory
     {
@@ -26,13 +25,13 @@ namespace Identidade.Infraestrutura.Factory
             return HandleUserEmailClaims(strMail);
         }
 
-        private void ValidateTokenVersion(Dictionary<string, string> claims)
+        private static void ValidateTokenVersion(Dictionary<string, string> claims)
         {
             if (!claims.TryGetValue(Constants.Token.Claim.Type.ver, out string? version) || string.IsNullOrWhiteSpace(version))
                 throw new InvalidOperationException("Invalid JWT Authorization Token.");
         }
 
-        private string GetUserEmailClaim(Dictionary<string, string> claims)
+        private static string GetUserEmailClaim(Dictionary<string, string> claims)
         {
             var version = claims[Constants.Token.Claim.Type.ver];
             return version.Equals(Constants.Token.Claim.Value.v1)
@@ -40,7 +39,7 @@ namespace Identidade.Infraestrutura.Factory
                 : Constants.Token.Claim.Type.preferred_username;
         }
 
-        private Credentials HandleAppIdClaims(Dictionary<string, string> claims, string? requestUser)
+        private static Credentials HandleAppIdClaims(Dictionary<string, string> claims, string? requestUser)
         {
             if (claims.TryGetValue(Constants.Token.Claim.Type.appid, out string? appId))
             {
@@ -55,7 +54,7 @@ namespace Identidade.Infraestrutura.Factory
             }
         }
 
-        private Credentials HandleUserEmailClaims(string strMail)
+        private static Credentials HandleUserEmailClaims(string strMail)
         {
             if (!TryGetMailAddress(strMail, out MailAddress? userEmail) || userEmail is null)
                 throw new InvalidOperationException("Invalid JWT Authorization Token.");
@@ -63,7 +62,7 @@ namespace Identidade.Infraestrutura.Factory
             return CreateCredentials(userEmail);
         }
 
-        private Dictionary<string, string> GetTokenClaims(string authorizationToken)
+        private static Dictionary<string, string> GetTokenClaims(string authorizationToken)
         {
             if (!AuthenticationHeaderValue.TryParse(authorizationToken, out var headerValue)
                 || !headerValue.Scheme.Equals(Constants.Token.Scheme.Bearer)
@@ -77,7 +76,7 @@ namespace Identidade.Infraestrutura.Factory
                 .ToDictionary(g => g.Key, g => g.First().Value);
         }
 
-        private Credentials CreateCredentials(MailAddress userEmail)
+        private static Credentials CreateCredentials(MailAddress userEmail)
         {
             var userPattern = userEmail.User.Split("-");
             if (userPattern.Length < 2)
@@ -86,7 +85,7 @@ namespace Identidade.Infraestrutura.Factory
             return new Credentials(userPattern[0], userPattern.Skip(1).Aggregate((a, b) => $"{a}-{b}"));
         }
 
-        private bool TryGetMailAddress(string userEmail, out MailAddress? mailAddress)
+        private static bool TryGetMailAddress(string userEmail, out MailAddress? mailAddress)
         {
             try
             {

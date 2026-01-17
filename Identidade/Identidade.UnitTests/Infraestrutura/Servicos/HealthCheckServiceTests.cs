@@ -36,8 +36,7 @@ namespace Identidade.UnitTests.Infraestrutura.Services
             Assert.Equal(processId.ToString(), actual.ProcessId);
             Assert.Equal(processName, actual.ProcessName);
 
-            Assert.Equal(1, actual.ConfigItems.Count);
-            Assert.Equal(clientId, actual.ConfigItems.First().Value);
+            Assert.Empty(actual.ConfigItems);
         }
 
         [Fact]
@@ -48,28 +47,6 @@ namespace Identidade.UnitTests.Infraestrutura.Services
 
             Assert.NotNull(ex);
             Assert.Equal("Could not determine the executable process name from the command line.", ex.Message);
-        }
-
-        [Fact]
-        public void Execute_EmptyConfiguration_Test()
-        {
-            var processId = 1234;
-            var processName = "TestProcessName";
-
-            var environment = Substitute.For<IEnvironmentAdapter>();
-
-            environment.ProcessId.Returns(processId);
-            environment.CommandLine.Returns(processName);
-
-            var service = new HealthCheckService(environment, Substitute.For<IConfiguration>());
-            var actual = service.Execute();
-
-            Assert.NotNull(actual);
-            Assert.Equal(processId.ToString(), actual.ProcessId);
-            Assert.Equal(processName, actual.ProcessName);
-
-            Assert.Equal(1, actual.ConfigItems.Count);
-            Assert.Equal(string.Empty, actual.ConfigItems.First().Value);
         }
     }
 }

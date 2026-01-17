@@ -9,7 +9,7 @@ using Identidade.Dominio.Writers;
 using Identidade.Infraestrutura.Adaptadores;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Data;
-using Identidade.Infraestrutura.Factory;
+using Identidade.Infraestrutura.Fabricas;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Infraestrutura.Interfaces;
 using Identidade.Infraestrutura.Services;
@@ -51,7 +51,7 @@ namespace Identidade.Infraestrutura.Configuracoes
             services.AddIdentity<User, IdentityRole>()
                 .AddDefaultTokenProviders()
                 .AddEntityFrameworkStores<ARCDbContext>();
-            
+
             services.AddLogging(cfg => cfg.AddConsole().AddSerilog())
                 .Configure<LoggerFilterOptions>(opt => opt.MinLevel = LogLevel.Information);
         }
@@ -73,8 +73,6 @@ namespace Identidade.Infraestrutura.Configuracoes
                         return;
                     else
                     {
-                        // Use Migrate() for Development and Production
-                        // This will apply pending migrations without trying to create the database
                         context.Database.Migrate();
                     }
 
@@ -136,13 +134,30 @@ namespace Identidade.Infraestrutura.Configuracoes
                     loggerConfig.WriteTo.Elasticsearch(new[] { new Uri(settings.Logging.ElasticSearchAddress) }, opts =>
                     {
                         opts.MinimumLevel = settings.Logging.LogLevel;
-                        opts.BootstrapMethod = BootstrapMethod.Silent; // Changed from Failure to Silent
+                        opts.BootstrapMethod = BootstrapMethod.Silent;
                     });
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Warning: Failed to configure Elasticsearch logging: {ex.Message}");
                     Console.WriteLine("Application will continue without Elasticsearch logging.");
+                }
+            }
+
+            var aiConnectionString = settings.ApplicationInsights?.ConnectionString;
+
+            if (!string.IsNullOrEmpty(aiConnectionString))
+            {
+                try
+                {
+                    loggerConfig.WriteTo.ApplicationInsights(
+                        aiConnectionString,
+                        TelemetryConverter.Traces);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to configure ApplicationInsights logging: {ex.Message}");
+                    Console.WriteLine("Application will continue without ApplicationInsights logging.");
                 }
             }
 

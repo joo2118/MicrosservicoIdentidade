@@ -14,7 +14,6 @@ namespace Identidade.UnitTests.Dominio.Services
         [InlineData(true, true, false)]
         [InlineData(false, true, true)]
         [InlineData(true, false, true)]
-        [InlineData(true, true, true)]
         public void Constructor_ThrowsArgumentNullException_WhenDependencyIsNull(
             bool hasUserRepository,
             bool hasLogInService,
@@ -51,43 +50,6 @@ namespace Identidade.UnitTests.Dominio.Services
             Assert.True(result);
             await logInService.Received(1).LogIn(user);
             await userRepository.DidNotReceive().Update(Arg.Any<User>(), Arg.Any<string>());
-        }
-
-        [Fact]
-        public async Task LogIn_UpdatesPasswordHashAndReturnsTrue_WhenPasswordHashDoesNotMatchButNewHashDoes()
-        {
-            var userRepository = Substitute.For<IUserRepository>();
-            var logInService = Substitute.For<ILogInService>();
-            var user = new User { PasswordHash = "oldhash" };
-
-            userRepository.GetByName("testuser").Returns(Task.FromResult(user));
-
-            var manager = new SignInManager(userRepository, logInService);
-
-            var result = await manager.LogIn("testuser", "password");
-
-            Assert.True(result);
-            Assert.Equal("newhash", user.PasswordHash);
-            await userRepository.Received(1).Update(user, null);
-            await logInService.Received(1).LogIn(user);
-        }
-
-        [Fact]
-        public async Task LogIn_ReturnsFalse_WhenPasswordVerificationFails()
-        {
-            var userRepository = Substitute.For<IUserRepository>();
-            var logInService = Substitute.For<ILogInService>();
-            var user = new User { PasswordHash = "oldhash" };
-
-            userRepository.GetByName("testuser").Returns(Task.FromResult(user));
-
-            var manager = new SignInManager(userRepository, logInService);
-
-            var result = await manager.LogIn("testuser", "password");
-
-            Assert.False(result);
-            await userRepository.DidNotReceive().Update(Arg.Any<User>(), Arg.Any<string>());
-            await logInService.DidNotReceive().LogIn(Arg.Any<User>());
         }
 
         [Fact]

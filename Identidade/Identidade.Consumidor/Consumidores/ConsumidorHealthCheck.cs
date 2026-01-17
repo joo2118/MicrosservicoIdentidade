@@ -6,6 +6,7 @@ using Identidade.Publico.Events;
 using System;
 using System.Threading.Tasks;
 using Identidade.Infraestrutura.Extensoes;
+using Microsoft.ApplicationInsights;
 
 namespace Identidade.Consumidor.Consumidores
 {
@@ -13,8 +14,8 @@ namespace Identidade.Consumidor.Consumidores
     {
         private readonly IHealthCheckService _healthCheckService;
 
-        public ConsumidorHealthCheck(IHealthCheckService healthCheckService, IMessageManager messageManager)
-            : base(messageManager)
+        public ConsumidorHealthCheck(IHealthCheckService healthCheckService, IMessageManager messageManager, TelemetryClient telemetryClient)
+            : base(messageManager, telemetryClient)
         {
             _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
         }

@@ -4,6 +4,7 @@ using Identidade.Dominio.Helpers;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using System.Threading.Tasks;
+using Microsoft.ApplicationInsights;
 
 namespace Identidade.Consumidor.Consumidores
 {
@@ -11,8 +12,8 @@ namespace Identidade.Consumidor.Consumidores
     {
         private readonly IUserClientService _userService;
 
-        public ConsumidorCriaOuAtualizaUsuario(IUserClientService userService, IMessageManager messageManager)
-            : base(messageManager)
+        public ConsumidorCriaOuAtualizaUsuario(IUserClientService userService, IMessageManager messageManager, TelemetryClient telemetryClient)
+            : base(messageManager, telemetryClient)
         {
             _userService = userService;
         }

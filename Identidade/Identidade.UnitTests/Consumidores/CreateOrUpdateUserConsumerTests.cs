@@ -1,13 +1,16 @@
-﻿using System.Threading.Tasks;
-using MassTransit;
-using NSubstitute;
-using NSubstitute.ExceptionExtensions;
-using Identidade.Consumidor.Consumidores;
+﻿using Identidade.Consumidor.Consumidores;
 using Identidade.Consumidor.Helpers;
 using Identidade.Dominio.Helpers;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using Identidade.Publico.Dtos;
+using MassTransit;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Identidade.Consumidor.Tests
@@ -30,7 +33,13 @@ namespace Identidade.Consumidor.Tests
 
             userService.GetById("test-user-id").Returns(new OutputUserDto());
 
-            var consumer = new ConsumidorCriaOuAtualizaUsuario(userService, messageManager);
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            var telemetryClient = new TelemetryClient(telemetryConfiguration);
+            var consumer = new ConsumidorCriaOuAtualizaUsuario(userService, messageManager, telemetryClient);
 
             await consumer.ConsumeContext(context);
 
@@ -54,7 +63,13 @@ namespace Identidade.Consumidor.Tests
 
             userService.GetById("test-user-id").Throws(new NotFoundAppException());
 
-            var consumer = new ConsumidorCriaOuAtualizaUsuario(userService, messageManager);
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            var telemetryClient = new TelemetryClient(telemetryConfiguration);
+            var consumer = new ConsumidorCriaOuAtualizaUsuario(userService, messageManager, telemetryClient);
 
             await consumer.ConsumeContext(context);
 

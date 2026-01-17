@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Identidade.Dominio.Extensions;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
@@ -12,21 +11,21 @@ using System.Net;
 using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 using Serilog;
+using Microsoft.ApplicationInsights;
 
-namespace Identidade.RESTAPI.Controllers
+namespace Identidade.RESTAPI.Controladores
 {
     [Route("users")]
-    public class UsersController : ControllerBase
+    public class UsersController : BaseController
     {
         private readonly IUserClientService _userService;
         private readonly ICredentialsFactory _credentialsFactory;
-        private readonly ILogger _logger;
 
-        public UsersController(IUserClientService userService, ICredentialsFactory credentialsFactory, ILogger logger)
+        public UsersController(IUserClientService userService, ICredentialsFactory credentialsFactory, ILogger logger, TelemetryClient telemetryClient)
+            : base(telemetryClient, logger)
         {
             _userService = userService ?? throw new ArgumentNullException(nameof(userService));
             _credentialsFactory = credentialsFactory ?? throw new ArgumentNullException(nameof(credentialsFactory));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <summary>
@@ -46,31 +45,34 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(string), (int)HttpStatusCode.InternalServerError)]
         public async Task<IActionResult> Create([FromBody] ArcUserDto arcUserDto, [FromHeader][Required] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                if(arcUserDto is null)
-                    return BadRequest("Invalid User provided.");
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var createdUserDto = await _userService.Create(arcUserDto, credentials.UserLogin, arcUserDto.Codigo);
-                return Created(credentials.UserLogin, createdUserDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (ConflictAppException e)
-            {
-                return Conflict(e.Errors);
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
-            catch (Exception e)
-            {
-                _logger.Error(e, "Error creating user");
-                return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
-            }
+                try
+                {
+                    if(arcUserDto is null)
+                        return BadRequest("Invalid User provided.");
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var createdUserDto = await _userService.Create(arcUserDto, credentials.UserLogin, arcUserDto.Codigo);
+                    
+                    return Created(credentials.UserLogin, createdUserDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (ConflictAppException e)
+                {
+                    return Conflict(e.Errors);
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+                catch (Exception e)
+                {
+                    return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
+                }
+            }, "CreateUser", new Dictionary<string, string> { { "UserLogin", arcUserDto?.Login } });
         }
 
         /// <summary>
@@ -84,16 +86,20 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Delete(string userId, [FromHeader][Required] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                await _userService.Delete(userId, credentials.UserLogin);
-                return NoContent();
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    await _userService.Delete(userId, credentials.UserLogin);
+                    
+                    return NoContent();
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "DeleteUser", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -114,27 +120,30 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(string), (int)HttpStatusCode.InternalServerError)]
         public async Task<IActionResult> Update([Required] string userId, [FromBody][Required] ArcUserDto arcUserDto, [FromHeader][Required] string authorization, [FromHeader] string requestUser = null)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            return await ExecuteAsync(async () =>
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            try
-            {
-                if (arcUserDto is null)
-                    return BadRequest("Invalid User provided.");
+                try
+                {
+                    if (arcUserDto is null)
+                        return BadRequest("Invalid User provided.");
 
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                var updatedUserDto = await _userService.Update(userId, arcUserDto, credentials.UserLogin);
-                return Ok(updatedUserDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (Exception e)
-            {
-                _logger.Error(e, "Error updating user");
-                return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
-            }
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    var updatedUserDto = await _userService.Update(userId, arcUserDto, credentials.UserLogin);
+                    
+                    return Ok(updatedUserDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (Exception e)
+                {
+                    return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
+                }
+            }, "UpdateUser", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -156,30 +165,32 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(string), (int)HttpStatusCode.InternalServerError)]
         public async Task<IActionResult> Patch(string userId, [FromBody] PatchUserDto arcUserDto, [FromHeader] string authorization, [FromServices] IPatchUserMerger patchUserMerger, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                if (arcUserDto is null)
-                    return BadRequest("Invalid User provided.");
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
+                try
+                {
+                    if (arcUserDto is null)
+                        return BadRequest("Invalid User provided.");
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
 
-                var currentUser = _userService.GetById(userId, out var password);
-                if (currentUser is null)
-                    throw new NotFoundAppException("user", "ID", userId);
+                    var currentUser = _userService.GetById(userId, out var password);
+                    if (currentUser is null)
+                        throw new NotFoundAppException("user", "ID", userId);
 
-                var mergedUserDto = patchUserMerger.Merge(currentUser, password, arcUserDto);
+                    var mergedUserDto = patchUserMerger.Merge(currentUser, password, arcUserDto);
 
-                var updatedUserDto = await _userService.Update(userId, mergedUserDto, credentials.UserLogin);
-                return Ok(updatedUserDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (Exception e)
-            {
-                _logger.Error(e, "Error updating user");
-                return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
-            }
+                    var updatedUserDto = await _userService.Update(userId, mergedUserDto, credentials.UserLogin);
+                    return Ok(updatedUserDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (Exception e)
+                {
+                    return StatusCode((int)HttpStatusCode.InternalServerError, e.GetAllMessages());
+                }
+            }, "PatchUser", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -194,15 +205,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetById(string userId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userDto = await _userService.GetById(userId);
-                return Ok(userDto);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var userDto = await _userService.GetById(userId);
+                    return Ok(userDto);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserById", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -219,15 +233,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Get([FromQuery] string login)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userDtos = await _userService.Get(login);
-                return Ok(userDtos);
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
+                try
+                {
+                    var userDtos = await _userService.Get(login);
+                    return Ok(userDtos);
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUsers", new Dictionary<string, string> { { "LoginFilter", login } });
         }
 
         /// <summary>
@@ -239,15 +256,18 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> GetUserGroups(string userId)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var userGroupDtos = await _userService.GetUserGroups(userId);
-                return Ok(userGroupDtos);
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
+                try
+                {
+                    var userGroupDtos = await _userService.GetUserGroups(userId);
+                    return Ok(userGroupDtos);
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "GetUserGroups", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -262,16 +282,19 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> AssociateToUserGroup(string userId, string userGroupId, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                await _userService.AssociateToUserGroup(userId, userGroupId, credentials.UserLogin);
-                return NoContent();
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    await _userService.AssociateToUserGroup(userId, userGroupId, credentials.UserLogin);
+                    return NoContent();
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "AssociateUserToGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupId", userGroupId } });
         }
 
         /// <summary>
@@ -287,20 +310,23 @@ namespace Identidade.RESTAPI.Controllers
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> DissociateFromUserGroup(string userId, string userGroupId, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
-            try
+            return await ExecuteAsync(async () =>
             {
-                var credentials = _credentialsFactory.Create(authorization, requestUser);
-                await _userService.DissociateFromUserGroup(userId, userGroupId, credentials.UserLogin);
-                return NoContent();
-            }
-            catch (NotFoundAppException e)
-            {
-                return NotFound(e.Errors);
-            }
-            catch (AppException e)
-            {
-                return BadRequest(e.Errors);
-            }
+                try
+                {
+                    var credentials = _credentialsFactory.Create(authorization, requestUser);
+                    await _userService.DissociateFromUserGroup(userId, userGroupId, credentials.UserLogin);
+                    return NoContent();
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "DissociateUserFromGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupId", userGroupId } });
         }
     }
 }

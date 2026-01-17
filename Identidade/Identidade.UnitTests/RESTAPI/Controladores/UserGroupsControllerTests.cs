@@ -1,4 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -9,6 +12,7 @@ using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Dtos;
 using Identidade.RESTAPI.Controllers;
 using Identidade.UnitTests.Helpers;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -19,24 +23,39 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 {
     public class UserGroupsControllerTests
     {
+        private static TelemetryClient CreateTelemetryClient()
+        {
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            return new TelemetryClient(telemetryConfiguration);
+        }
+
         public static IEnumerable<object?[]> GetUserGroupsControllersConstructorTestParameters()
         {
             return ParameterTestHelper.GetParameters(s => s
                 .AddNullableParameter("userGroupService", Substitute.For<IUserGroupClientService>())
-                .AddNullableParameter("credentialsFactory", Substitute.For<ICredentialsFactory>()));
+                .AddNullableParameter("credentialsFactory", Substitute.For<ICredentialsFactory>())
+                .AddNullableParameter("telemetryClient", CreateTelemetryClient())
+                .AddNullableParameter("logger", Substitute.For<ILogger>()));
         }
 
         [Theory]
         [MemberData(nameof(GetUserGroupsControllersConstructorTestParameters))]
-        public void UserGroupsControllersConstructorTest(IUserGroupClientService userGroupService, ICredentialsFactory credentialsFactory,
+        public void UserGroupsControllersConstructorTest(
+            IUserGroupClientService userGroupService,
+            ICredentialsFactory credentialsFactory,
+            TelemetryClient telemetryClient,
+            ILogger logger,
             string? missingParameterName = null)
         {
-            UserGroupsController Create() => new UserGroupsController(userGroupService, credentialsFactory);
+            UserGroupsController Create() => new UserGroupsController(userGroupService, credentialsFactory, telemetryClient, logger);
 
             if (string.IsNullOrWhiteSpace(missingParameterName))
             {
                 var userGroupsController = Create();
-
                 Assert.NotNull(userGroupsController);
             }
             else
@@ -59,7 +78,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var userServiceMock = Substitute.For<IUserGroupClientService>();
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Delete(userGroupID, authorization);
 
             var notFoundResult = Assert.IsType<NoContentResult>(actionResult);
@@ -80,7 +99,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var userServiceMock = Substitute.For<IUserGroupClientService>();
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Delete(userGroupID, authorization, requestUser);
 
             var notFoundResult = Assert.IsType<NoContentResult>(actionResult);
@@ -102,7 +121,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             userServiceMock.When(x => x.Delete(userGroupID, credentials.UserLogin))
                            .Do(x => throw new NotFoundAppException("User Group not found."));
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Delete(userGroupID, authorization);
 
             var notFoundResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -118,7 +137,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.GetById(userGroupID).Returns(expectedUserDto);
 
-            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>());
+            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>(), CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.GetById(userGroupID);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -134,7 +153,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.GetById(userGroupID).Throws(new NotFoundAppException("User Group not found."));
 
-            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>());
+            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>(), CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.GetById(userGroupID);
 
             Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -153,7 +172,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.Get(loginQuery).Returns(expectedUsersDto);
 
-            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>());
+            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>(), CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Get(loginQuery);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -169,7 +188,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.Get(loginQuery).Throws(new NotFoundAppException("Test not found exception"));
 
-            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>());
+            var userGroupsController = new UserGroupsController(userServiceMock, Substitute.For<ICredentialsFactory>(), CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Get(loginQuery);
 
             var okObjectResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -195,7 +214,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.Update(userGroupId, inputUserGroupDto, credentials.UserLogin).Returns(updatedUserGroupDto);
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Update(userGroupId, inputUserGroupDto, authorization);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -223,7 +242,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.Update(userGroupId, inputUserGroupDto, credentials.UserLogin).Returns(updatedUserGroupDto);
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Update(userGroupId, inputUserGroupDto, authorization, requestUser);
 
             var okObjectResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -245,7 +264,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var userServiceMock = Substitute.For<IUserGroupClientService>();
             userServiceMock.Update(userGroupId, Arg.Any<InputUserGroupDto>(), Arg.Any<string>()).Throws(new AppException("User Group Null"));
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Update(userGroupId, (InputUserGroupDto)null, authorization);
 
             var notFoundResult = Assert.IsType<BadRequestObjectResult>(actionResult);
@@ -270,7 +289,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             userServiceMock.When(x => x.Update(userGroupId, inputUserGroupDto, credentials.UserLogin))
                            .Do(x => throw new NotFoundAppException("User Group not found."));
 
-            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock);
+            var userGroupsController = new UserGroupsController(userServiceMock, credentialsFactoryMock, CreateTelemetryClient(), Substitute.For<ILogger>());
             var actionResult = await userGroupsController.Update(userGroupId, inputUserGroupDto, authorization);
 
             var notFoundResult = Assert.IsType<NotFoundObjectResult>(actionResult);
@@ -290,7 +309,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(inputUserGroupDto, Arg.Any<string>()).Returns(createdUserDto);
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -316,7 +335,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(inputUserGroupDto, Arg.Any<string>()).Returns(createdUserDto);
             _credentialsFactory.Create(authorization, requestUser).Returns(new Credentials("tenantId", "userLogin"));
@@ -335,7 +354,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(Arg.Any<InputUserGroupDto>(), Arg.Any<string>()).Throws(new AppException("User Group Null"));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -358,7 +377,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(inputUserGroupDto, Arg.Any<string>()).Throws(new NotFoundAppException("User Group not found."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -381,7 +400,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(inputUserGroupDto, Arg.Any<string>()).Throws(new ConflictAppException("Conflict test."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -404,7 +423,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.Create(inputUserGroupDto, Arg.Any<string>()).Throws(new AppException("App Exception test."));
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
@@ -422,7 +441,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.GetPermissions(userGroupId).Returns(Array.Empty<OutputPermissionDto>());
 
@@ -440,7 +459,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             var _userService = Substitute.For<IUserGroupClientService>();
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.GetPermissions(userGroupId).Throws(new NotFoundAppException("User Group not found."));
 
@@ -460,7 +479,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
 
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.AddPermissions(userGroupId, Arg.Any<IReadOnlyCollection<InputPermissionDto>>(), Arg.Any<string>()).Returns(new OutputUserGroupDto());
 
@@ -481,7 +500,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
 
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.AddPermissions(userGroupId, Arg.Any<IReadOnlyCollection<InputPermissionDto>>(), Arg.Any<string>()).Throws(new NotFoundAppException("User Group not found."));
 
@@ -501,7 +520,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
             var _credentialsFactory = Substitute.For<ICredentialsFactory>();
 
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.DeletePermissions(userGroupId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>()).Returns(new OutputUserGroupDto());
 
@@ -522,7 +541,7 @@ namespace Identidade.UnitTests.RESTAPI.Controllers
 
             _credentialsFactory.Create(authorization).Returns(new Credentials("tenantId", "userLogin"));
 
-            var _controller = new UserGroupsController(_userService, _credentialsFactory);
+            var _controller = new UserGroupsController(_userService, _credentialsFactory, CreateTelemetryClient(), Substitute.For<ILogger>());
 
             _userService.DeletePermissions(userGroupId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>()).Throws(new NotFoundAppException("User Group not found."));
 

@@ -1626,7 +1626,7 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             var expectedUser = new User
             {
                 Id = userId,
-                PasswordHash = "hashedPassword",
+                PasswordHash = "password",
                 AuthenticationType = AuthenticationType.DatabaseUser.ToString()
             };
             var expectedOutputUserDto = new OutputUserDto
@@ -1651,7 +1651,7 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var result = userClientServiceMoq.GetById(userId, out string password);
 
-            Assert.Equal("hashedPassword", password);
+            Assert.Equal("password", password);
             Assert.Equal(AuthenticationType.DatabaseUser, result.AuthenticationType);
             userRepositoryMoq.Verify(repo => repo.GetById(userId), Times.Once);
             mapperMoq.Verify(mapper => mapper.Map<User, OutputUserDto>(It.IsAny<User>()), Times.Once);
@@ -1664,7 +1664,7 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             var expectedUser = new User
             {
                 Id = userId,
-                PasswordHash = "hashedPassword",
+                PasswordHash = "password",
                 AuthenticationType = AuthenticationType.ActiveDirectory.ToString()
             };
             var expectedOutputUserDto = new OutputUserDto

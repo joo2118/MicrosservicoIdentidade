@@ -5,12 +5,25 @@ using Identidade.Consumidor.Consumidores;
 using Identidade.Consumidor.Helpers;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.Extensibility;
 using Xunit;
 
 namespace Identidade.Consumidor.Tests
 {
     public class DeleteUserConsumerTests
     {
+        private static TelemetryClient CreateTelemetryClient()
+        {
+            var telemetryConfiguration = new TelemetryConfiguration
+            {
+                TelemetryChannel = new InMemoryChannel()
+            };
+
+            return new TelemetryClient(telemetryConfiguration);
+        }
+
         [Fact]
         public async Task ConsumeContext_CallsDeleteOnUserService()
         {
@@ -20,7 +33,10 @@ namespace Identidade.Consumidor.Tests
             var command = new DeleteUserCommand { UserId = "test-user-id", RequestUserId = "request-user-id" };
             context.Message.Returns(command);
 
-            var consumer = new ConsumidorDeletaUsuario(userService, messageManager);
+            var consumer = new ConsumidorDeletaUsuario(
+                userService,
+                messageManager,
+                CreateTelemetryClient());
 
             await consumer.ConsumeContext(context);
 

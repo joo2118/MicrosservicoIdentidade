@@ -3,6 +3,7 @@ using Identidade.Consumidor.Helpers;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using System.Threading.Tasks;
+using Microsoft.ApplicationInsights;
 
 namespace Identidade.Consumidor.Consumidores
 {
@@ -10,8 +11,8 @@ namespace Identidade.Consumidor.Consumidores
     {
         private readonly IUserGroupClientService _userGroupService;
 
-        public ConsumidorDeletaGrupoUsuario(IUserGroupClientService userGroupService, IMessageManager messageManager)
-        : base(messageManager)
+        public ConsumidorDeletaGrupoUsuario(IUserGroupClientService userGroupService, IMessageManager messageManager, TelemetryClient telemetryClient)
+        : base(messageManager, telemetryClient)
         {
             _userGroupService = userGroupService;
         }

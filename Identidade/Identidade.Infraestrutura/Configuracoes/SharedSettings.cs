@@ -14,6 +14,7 @@ namespace Identidade.Infraestrutura.Configuracoes
         public MessageBroker MessageBroker { get; }
         public string CryptoKey { get; }
         public BaselineMetrics BaselineMetrics { get; }
+        public ApplicationInsightsSettings ApplicationInsights { get; }
 
         protected SharedSettings(IConfiguration configuration)
         {
@@ -55,6 +56,12 @@ namespace Identidade.Infraestrutura.Configuracoes
                 enableMetricsCollection: baselineMetricsSection.GetValue("EnableMetricsCollection", false),
                 metricsOutputPath: baselineMetricsSection.GetValue("MetricsOutputPath", "metrics\\baseline-{Date}.json"),
                 metricsSamplingIntervalSeconds: baselineMetricsSection.GetValue("MetricsSamplingIntervalSeconds", 60)
+            );
+
+            var appInsightsSection = configuration.GetSection("ApplicationInsights");
+            ApplicationInsights = new ApplicationInsightsSettings
+            (
+                connectionString: appInsightsSection.GetValue("ConnectionString", string.Empty)
             );
 
             MessageBroker = configuration.GetValue("MessageBroker", MessageBroker.AzureServiceBus);

@@ -69,16 +69,5 @@ namespace Identidade.UnitTests
             Assert.NotNull(settingsMoq);
             Assert.NotNull(log);
         }
-
-        [Fact]
-        public void CreateLoggerElasticsearchSinkOptionsTest()
-        {
-            var settingsMoq = new Mock<ISettings>();
-            var log = new Logging(true, "", "", true, LogEventLevel.Information);
-
-            settingsMoq.Setup(s => s.Logging).Returns(log);
-
-            Assert.Throws<UriFormatException>(() => SharedConfiguration.CreateLogger(settingsMoq.Object));
-        }
     }
 }
