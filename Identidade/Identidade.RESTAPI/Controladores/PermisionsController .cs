@@ -12,7 +12,6 @@ using Identidade.RESTAPI.Controladores;
 
 namespace Identidade.RESTAPI.Controllers
 {
-    [Authorize]
     [Route("permissions")]
     public class PermissionsController : BaseController
     {

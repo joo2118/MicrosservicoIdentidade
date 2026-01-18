@@ -71,6 +71,16 @@ namespace Identidade.Dominio.Servicos
             return result != 0;
         }
 
+        public async Task<string> RemoveByName(string userGroupName)
+        {
+            var userGroup = await GetByName(userGroupName);
+
+            _arcDbContext.UserGroups.Remove(userGroup);
+            await _arcDbContext.SaveChangesAsync();
+
+            return userGroup.Id;
+        }
+
         public async Task<UserGroup> GetById(string userGroupId)
         {
             var userGroup = await GetAllUserGroups()

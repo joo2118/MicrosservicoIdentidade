@@ -274,48 +274,48 @@ namespace Identidade.RESTAPI.Controladores
         /// Associates an user to a group.
         /// </summary>
         /// <param name="userId"> The user to be associated. </param>
-        /// <param name="userGroupId"> The group where the user will be associated to. </param>
+        /// <param name="userGroupName"> The group where the user will be associated to. </param>
         /// <param name="authorization">The authorization token from the header.</param>
         /// <param name="requestUser">The request user from the header (optional).</param>
-        [HttpPut("{userId}/groups/{userGroupId}")]
+        [HttpPut("{userId}/groups/{userGroupName}")]
         [ProducesResponseType((int)HttpStatusCode.NoContent)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> AssociateToUserGroup(string userId, string userGroupId, [FromHeader] string authorization, [FromHeader] string requestUser = null)
+        public async Task<IActionResult> AssociateToUserGroup(string userId, string userGroupName, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
                     var credentials = _credentialsFactory.Create(authorization, requestUser);
-                    await _userService.AssociateToUserGroup(userId, userGroupId, credentials.UserLogin);
+                    await _userService.AssociateToUserGroup(userId, userGroupName, credentials.UserLogin);
                     return NoContent();
                 }
                 catch (AppException e)
                 {
                     return BadRequest(e.Errors);
                 }
-            }, "AssociateUserToGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupId", userGroupId } });
+            }, "AssociateUserToGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupName", userGroupName } });
         }
 
         /// <summary>
         /// Dissociates an user from a group.
         /// </summary>
         /// <param name="userId"> The user to be assigned. </param>
-        /// <param name="userGroupId"> The group where the user will be assigned to. </param>
+        /// <param name="userGroupName"> The group where the user will be assigned to. </param>
         /// <param name="authorization">The authorization token from the header.</param>
         /// <param name="requestUser">The request user from the header (optional).</param>
-        [HttpDelete("{userId}/groups/{userGroupId}")]
+        [HttpDelete("{userId}/groups/{userGroupName}")]
         [ProducesResponseType((int)HttpStatusCode.NoContent)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> DissociateFromUserGroup(string userId, string userGroupId, [FromHeader] string authorization, [FromHeader] string requestUser = null)
+        public async Task<IActionResult> DissociateFromUserGroup(string userId, string userGroupName, [FromHeader] string authorization, [FromHeader] string requestUser = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
                     var credentials = _credentialsFactory.Create(authorization, requestUser);
-                    await _userService.DissociateFromUserGroup(userId, userGroupId, credentials.UserLogin);
+                    await _userService.DissociateFromUserGroup(userId, userGroupName, credentials.UserLogin);
                     return NoContent();
                 }
                 catch (NotFoundAppException e)
@@ -326,7 +326,7 @@ namespace Identidade.RESTAPI.Controladores
                 {
                     return BadRequest(e.Errors);
                 }
-            }, "DissociateUserFromGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupId", userGroupId } });
+            }, "DissociateUserFromGroup", new Dictionary<string, string> { { "UserId", userId }, { "UserGroupName", userGroupName } });
         }
     }
 }

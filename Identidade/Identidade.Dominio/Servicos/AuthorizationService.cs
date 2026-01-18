@@ -10,11 +10,11 @@ namespace Identidade.Dominio.Servicos
 {
     public interface IAuthorizationService
     {
-        Task<UserGroup> AddPermissionsIntoUserGroup(string userGroupId, IReadOnlyDictionary<string, int> permissions);
-        Task<UserGroup> DeletePermissionsFromUserGroup(string userGroupId, IReadOnlyCollection<string> permissionsIds);
+        Task<UserGroup> AddPermissionsIntoUserGroup(string userGroupName, IReadOnlyDictionary<string, int> permissions);
+        Task<UserGroup> DeletePermissionsFromUserGroup(string userGroupName, IReadOnlyCollection<string> permissionsIds);
         Task<IReadOnlyCollection<UserGroup>> GetUserGroupsContainigPermission(string permissionId);
-        Task<User> AssociateUserToUserGroup(string userId, string userGroupId);
-        Task<User> DissociateUserFromUserGroup(string userId, string userGroupId);
+        Task<User> AssociateUserToUserGroup(string userId, string userGroupName);
+        Task<User> DissociateUserFromUserGroup(string userId, string userGroupName);
     }
 
     public class AuthorizationService : IAuthorizationService
@@ -30,12 +30,12 @@ namespace Identidade.Dominio.Servicos
             _userRepository = userRepository;
         }
 
-        public async Task<UserGroup> AddPermissionsIntoUserGroup(string userGroupId, IReadOnlyDictionary<string, int> permissions)
+        public async Task<UserGroup> AddPermissionsIntoUserGroup(string userGroupName, IReadOnlyDictionary<string, int> permissions)
         {
             var errors = new string[] { };
 
             var userGroup = await ExceptionCatcher.ExecuteSafe<NotFoundAppException, Task<UserGroup>>(
-                () => _userGroupRepository.GetById(userGroupId),
+                () => _userGroupRepository.GetByName(userGroupName),
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             foreach (var kvp in permissions)
@@ -70,12 +70,12 @@ namespace Identidade.Dominio.Servicos
             return await _userGroupRepository.Update(userGroup);
         }
 
-        public async Task<UserGroup> DeletePermissionsFromUserGroup(string userGroupId, IReadOnlyCollection<string> permissionsIds)
+        public async Task<UserGroup> DeletePermissionsFromUserGroup(string userGroupName, IReadOnlyCollection<string> permissionsIds)
         {
             var errors = new string[] { };
 
             var userGroup = await ExceptionCatcher.ExecuteSafe<NotFoundAppException, Task<UserGroup>>(
-                () => _userGroupRepository.GetById(userGroupId),
+                () => _userGroupRepository.GetByName(userGroupName),
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             foreach (var permissionId in permissionsIds)
@@ -99,7 +99,7 @@ namespace Identidade.Dominio.Servicos
             return await _userGroupRepository.Update(userGroup);
         }
 
-        public async Task<User> AssociateUserToUserGroup(string userId, string userGroupId)
+        public async Task<User> AssociateUserToUserGroup(string userId, string userGroupName)
         {
             var errors = new string[] { };
 
@@ -108,19 +108,19 @@ namespace Identidade.Dominio.Servicos
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             UserGroup userGroup = await ExceptionCatcher.ExecuteSafe<NotFoundAppException, Task<UserGroup>>(
-                () => _userGroupRepository.GetById(userGroupId),
+                () => _userGroupRepository.GetByName(userGroupName),
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             if (errors.Any())
                 throw new NotFoundAppException(errors);
 
-            if (!user.UserGroupUsers.Select(ugu => ugu.UserGroupId).Contains(userGroupId))
+            if (!user.UserGroupUsers.Select(ugu => ugu.UserGroup.Name).Contains(userGroupName))
                 user.UserGroupUsers.Add(new UserGroupUser(userGroup, user));
 
             return await _userRepository.Update(user, null);
         }
 
-        public async Task<User> DissociateUserFromUserGroup(string userId, string userGroupId)
+        public async Task<User> DissociateUserFromUserGroup(string userId, string userGroupName)
         {
             var errors = new string[] { };
 
@@ -129,13 +129,13 @@ namespace Identidade.Dominio.Servicos
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             var userGroup = await ExceptionCatcher.ExecuteSafe<NotFoundAppException, Task<UserGroup>>(
-                () => _userGroupRepository.GetById(userGroupId),
+                () => _userGroupRepository.GetByName(userGroupName),
                 e => { errors = errors.Concat(e.Errors).ToArray(); });
 
             if (errors.Any())
                 throw new NotFoundAppException(errors);
 
-            var userGroupUserToBeRemoved = user.UserGroupUsers.FirstOrDefault(ug => ug.UserGroupId == userGroupId);
+            var userGroupUserToBeRemoved = user.UserGroupUsers.FirstOrDefault(ug => ug.UserGroup.Name == userGroupName);
             if (userGroupUserToBeRemoved == null)
                 throw new AppException("The user is not associated to the user group.");
 

@@ -9,22 +9,22 @@ using Identidade.Publico.Events;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Identidade.Dominio.Modelos;
 
 namespace Identidade.Infraestrutura.ClientServices
 {
     public interface IUserGroupClientService
     {
-        Task<OutputUserGroupDto> AddPermissions(string userGroupId, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId);
+        Task<OutputUserGroupDto> AddPermissions(string userGroupName, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId);
         Task<OutputUserGroupDto> Create(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null);
         Task<OutputUserGroupDto> CreateApi(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null);
-        Task Delete(string userGroupId, string requestUserId);
+        Task Delete(string userGroupName, string requestUserId);
         Task DeleteApi(string userGroupId, string requestUserId);
-        Task<OutputUserGroupDto> DeletePermissions(string userGroupId, IReadOnlyCollection<string> permissionsIds, string requestUserId);
+        Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId);
         Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName);
         Task<OutputUserGroupDto> GetById(string userGroupId);
-        Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupId);
+        Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName);
         Task<OutputUserGroupDto> Update(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId);
+        Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId);
         Task<OutputUserGroupDto> UpdateApi(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId);
     }
 
@@ -48,10 +48,10 @@ namespace Identidade.Infraestrutura.ClientServices
             _databaseConnectionModifier = databaseConnectionModifier;
         }
 
-        public async Task<OutputUserGroupDto> AddPermissions(string userGroupId, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId)
+        public async Task<OutputUserGroupDto> AddPermissions(string userGroupName, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId)
         {
             var dicPermissions = permissions.ToDictionary(p => p.Id, p => _permissionOperationManager.GetOperationSum(p.Operations));
-            var userGroup = await _authorizationService.AddPermissionsIntoUserGroup(userGroupId, dicPermissions);
+            var userGroup = await _authorizationService.AddPermissionsIntoUserGroup(userGroupName, dicPermissions);
             var userGroupDto = _mapper.Map<UserGroup, OutputUserGroupDto>(userGroup);
 
             await _bus.Publish(
@@ -67,7 +67,7 @@ namespace Identidade.Infraestrutura.ClientServices
         public async Task<OutputUserGroupDto> Create(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
-            _userGroupRepository.BeginTransaction(); 
+            _userGroupRepository.BeginTransaction();
 
             var userGroup = _mapper.Map<InputUserGroupDto, UserGroup>(userGroupDto);
 
@@ -94,26 +94,23 @@ namespace Identidade.Infraestrutura.ClientServices
             return context;
         }
 
-        public async Task Delete(string userGroupId, string requestUserId)
+        public async Task Delete(string userGroupName, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             _userGroupRepository.BeginTransaction();
 
-            var groupDeleted = await _userGroupRepository.Remove(userGroupId);
+            var deletedId = await _userGroupRepository.RemoveByName(userGroupName);
 
             bool successfulResult = false;
-            if (groupDeleted)
-            {
-                _userGroupRepository.ConfigureParametersToRemove(out var parameters, userGroupId);
-                successfulResult = _userGroupRepository.RemoveItemDirectory(Constants.cst_SpRemoveItemDiretorio, parameters);
-            }
+            _userGroupRepository.ConfigureParametersToRemove(out var parameters, deletedId);
+            successfulResult = _userGroupRepository.RemoveItemDirectory(Constants.cst_SpRemoveItemDiretorio, parameters);
 
             _userGroupRepository.DefineTransaction(successfulResult);
         }
 
-        public async Task<OutputUserGroupDto> DeletePermissions(string userGroupId, IReadOnlyCollection<string> permissionsIds, string requestUserId)
+        public async Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId)
         {
-            var userGroup = await _authorizationService.DeletePermissionsFromUserGroup(userGroupId, permissionsIds);
+            var userGroup = await _authorizationService.DeletePermissionsFromUserGroup(userGroupName, permissionsIds);
             var userGroupDto = _mapper.Map<UserGroup, OutputUserGroupDto>(userGroup);
 
             await _bus.Publish(
@@ -142,9 +139,9 @@ namespace Identidade.Infraestrutura.ClientServices
             return userGroupInfo;
         }
 
-        public async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupId)
+        public async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName)
         {
-            var userGroup = await _userGroupRepository.GetById(userGroupId);
+            var userGroup = await _userGroupRepository.GetByName(userGroupName);
             var permissions = userGroup.UserGroupPermissions.Select(ugp => ugp.Permission).ToArray();
             var permissionsDto = _mapper.Map<Permission[], OutputPermissionDto[]>(permissions);
 
@@ -157,6 +154,28 @@ namespace Identidade.Infraestrutura.ClientServices
             _userGroupRepository.BeginTransaction();
 
             var userGroup = await _userGroupRepository.GetById(userGroupId);
+            var updatedUserGroup = _mapper.Map(userGroupDto, userGroup);
+
+            var savedUserGroup = await _userGroupRepository.Update(updatedUserGroup);
+            var savedUserGroupDto = _mapper.Map<UserGroup, OutputUserGroupDto>(savedUserGroup);
+
+            bool successfulResult = false;
+            if (savedUserGroup != null)
+            {
+                successfulResult = CreateUpdateGroupUserARC(savedUserGroup, userGroupDto);
+            }
+
+            _userGroupRepository.DefineTransaction(successfulResult);
+
+            return savedUserGroupDto;
+        }
+
+        public async Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId)
+        {
+            _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
+            _userGroupRepository.BeginTransaction();
+
+            var userGroup = await _userGroupRepository.GetByName(userGroupName);
             var updatedUserGroup = _mapper.Map(userGroupDto, userGroup);
 
             var savedUserGroup = await _userGroupRepository.Update(updatedUserGroup);

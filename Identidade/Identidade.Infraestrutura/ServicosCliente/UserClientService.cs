@@ -27,13 +27,13 @@ namespace Identidade.Infraestrutura.ClientServices
 {
     public interface IUserClientService
     {
-        Task AssociateToUserGroup(string userId, string userGroupId, string requestUserId);
+        Task AssociateToUserGroup(string userId, string userGroupName, string requestUserId);
         Task<OutputUserDto> Create(InputUserDto inputUserDto, string requestUserId, string suggestedId = null);
         Task<OutputUserDto> Create(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null);
         Task<OutputUserDto> CreateApi(InputUserDto inputUserDto, string requestUserId, string suggestedId = null);
         Task Delete(string userId, string requestUserId);
         Task DeleteApi(string userId, string requestUserId);
-        Task DissociateFromUserGroup(string userId, string userGroupId, string requestUserId);
+        Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId);
         Task<IReadOnlyCollection<OutputUserDto>> Get(string login);
         Task<OutputUserDto> GetById(string userId);
         OutputUserDto GetById(string userId, out string password);
@@ -69,9 +69,9 @@ namespace Identidade.Infraestrutura.ClientServices
             _arcUserXmlWriter = arcUserXmlWriter ?? throw new ArgumentNullException(nameof(arcUserXmlWriter));
         }
 
-        public async Task AssociateToUserGroup(string userId, string userGroupId, string requestUserId)
+        public async Task AssociateToUserGroup(string userId, string userGroupName, string requestUserId)
         {
-            var user = await _authorizationService.AssociateUserToUserGroup(userId, userGroupId);
+            var user = await _authorizationService.AssociateUserToUserGroup(userId, userGroupName);
             await PublishUserCreatedOrUpdated(user, null, requestUserId);
         }
 
@@ -179,9 +179,9 @@ namespace Identidade.Infraestrutura.ClientServices
             }
         }
 
-        public async Task DissociateFromUserGroup(string userId, string userGroupId, string requestUserId)
+        public async Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId)
         {
-            var user = await _authorizationService.DissociateUserFromUserGroup(userId, userGroupId);
+            var user = await _authorizationService.DissociateUserFromUserGroup(userId, userGroupName);
             await PublishUserCreatedOrUpdated(user, null, requestUserId);
         }
 

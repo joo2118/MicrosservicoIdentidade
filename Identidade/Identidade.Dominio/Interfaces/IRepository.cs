@@ -24,5 +24,7 @@ namespace Identidade.Dominio.Interfaces
         Task<TEntity> Create(TEntity entity);
         Task<TEntity> Update(TEntity entity);
         Task<bool> Remove(string entityId);
+
+        Task<string> RemoveByName(string userGroupName);
     }
 }
