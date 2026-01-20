@@ -166,6 +166,14 @@ namespace Identidade.Infraestrutura.ServicosCliente
                 }
 
                 _userRepository.DefineTransaction(successfulResult);
+
+                if (successfulResult)
+                    await _bus.Publish(
+                        new UserDeletedEvent
+                        {
+                            UserId = userId,
+                            RequestUserId = requestUserId
+                        });
             }
             catch (Exception)
             {
@@ -235,6 +243,8 @@ namespace Identidade.Infraestrutura.ServicosCliente
                 }
 
                 _userRepository.DefineTransaction(successfulResult);
+
+                await PublishUserCreatedOrUpdated(user, inputUserDto.Password, requestUserId);
 
                 return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
             }

@@ -7,6 +7,7 @@ using System;
 using System.Threading.Tasks;
 using Identidade.Infraestrutura.Extensoes;
 using Microsoft.ApplicationInsights;
+using System.Collections.Generic;
 
 namespace Identidade.Consumidor.Consumidores
 {
@@ -19,6 +20,15 @@ namespace Identidade.Consumidor.Consumidores
         {
             _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
         }
+
+        protected override string GetCommandName()
+            => nameof(HealthCheckIdentityCommand);
+
+        protected override Dictionary<string, string> GetErrorMetadata(ConsumeContext<HealthCheckIdentityCommand> context)
+            => new()
+            {
+                ["HealthCheckId"] = context.Message.Id.ToString()
+            };
 
         public override async Task ConsumeContext(ConsumeContext<HealthCheckIdentityCommand> context)
         {

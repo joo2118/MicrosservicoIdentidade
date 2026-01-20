@@ -84,7 +84,15 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
             _userGroupRepository.DefineTransaction(successfulResult);
 
-            return _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(createdUserGroup);
+            var createdUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(createdUserGroup);
+            await _bus.Publish(
+                new UserGroupCreatedOrUpdatedEvent
+                {
+                    UserGroup = createdUserGroupDto,
+                    RequestUserId = requestUserId
+                });
+
+            return createdUserGroupDto;
         }
         private bool CreateUpdateGroupUserARC(UserGroup createdUserGroup, InputUserGroupDto userGroupDto)
         {
@@ -106,6 +114,13 @@ namespace Identidade.Infraestrutura.ServicosCliente
             successfulResult = _userGroupRepository.RemoveItemDirectory(Constants.cst_SpRemoveItemDiretorio, parameters);
 
             _userGroupRepository.DefineTransaction(successfulResult);
+            if(successfulResult)
+                await _bus.Publish(
+                    new UserGroupDeletedEvent
+                    {
+                        UserGroupId = deletedId,
+                        RequestUserId = requestUserId
+                    });
         }
 
         public async Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId)
@@ -169,7 +184,16 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
             _userGroupRepository.DefineTransaction(successfulResult);
 
-            return _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(savedUserGroup);
+            var createdUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(savedUserGroup);
+
+            await _bus.Publish(
+                new UserGroupCreatedOrUpdatedEvent
+                {
+                    UserGroup = createdUserGroupDto,
+                    RequestUserId = requestUserId
+                });
+
+            return createdUserGroupDto;
         }
 
         public async Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId)
@@ -209,6 +233,7 @@ namespace Identidade.Infraestrutura.ServicosCliente
             var userGroup = await _userGroupRepository.GetByName(userGroupName);
             return new[] { _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(userGroup) };
         }
+
         public async Task<OutputUserGroupDto> CreateApi(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);

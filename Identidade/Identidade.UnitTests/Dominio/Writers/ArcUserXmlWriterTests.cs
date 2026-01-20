@@ -1,12 +1,11 @@
-﻿using Identidade.Dominio.Modelos;
+﻿using Identidade.Dominio.Escritores;
 using Identidade.Dominio.Modelos;
-using Identidade.Dominio.Writers;
 using System;
 using System.Collections.Generic;
 using System.Xml.Linq;
 using Xunit;
 
-namespace Identidade.UnitTests.Domain.Writers
+namespace Identidade.UnitTests.Dominio.Writers
 {
     public class ArcUserXmlWriterTests
     {
@@ -35,11 +34,11 @@ namespace Identidade.UnitTests.Domain.Writers
             Assert.Equal(arcUser.Email, result.Attribute(Constants.ArcXml.email).Value);
         }
 
-        public static IEnumerable<object?[]> GetWriteInvalidPasswordHistoryTestParameters()
+        public static IEnumerable<object[]> GetWriteInvalidPasswordHistoryTestParameters()
         {
-            yield return new object?[] { null };
-            yield return new object?[] { string.Empty };
-            yield return new object?[] { " " };
+            yield return new object[] { null };
+            yield return new object[] { string.Empty };
+            yield return new object[] { " " };
         }
 
         [Theory]

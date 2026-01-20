@@ -5,6 +5,7 @@ using Identidade.Infraestrutura.RedisNotifier;
 using Identidade.Dominio.Interfaces;
 using Identidade.Infraestrutura.Configuracoes.ServiceBus;
 using Identidade.Dominio.Modelos;
+using System;
 
 namespace Identidade.Consumidor.Configuracoes
 {
@@ -37,6 +38,13 @@ namespace Identidade.Consumidor.Configuracoes
             busFactoryConfigurator.ReceiveEndpoint(string.IsNullOrWhiteSpace(queueName) ? typeof(T).Name : queueName, ep =>
             {
                 ep.UseConcurrencyLimit(1);
+
+                ep.UseMessageRetry(r => r.Exponential(
+                    retryLimit: 5,
+                    minInterval: TimeSpan.FromSeconds(1),
+                    maxInterval: TimeSpan.FromSeconds(30),
+                    intervalDelta: TimeSpan.FromSeconds(2)));
+
                 ep.ConfigureConsumer<T>(context, consumerCfg =>
                 {
                     consumerCfg.UseConcurrencyLimit(1);
