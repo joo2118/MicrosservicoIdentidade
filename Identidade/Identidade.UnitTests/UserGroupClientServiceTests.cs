@@ -28,7 +28,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
 
@@ -68,7 +68,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
 
@@ -107,7 +107,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup {Name = "New Group",  };
 
@@ -138,7 +138,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             userGroupRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).Returns(Task.FromResult(true));
             userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));
@@ -158,7 +158,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
 
@@ -184,7 +184,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group" };
@@ -206,7 +206,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group" };
@@ -228,7 +228,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var permission = new Permission { Id = "permission", Name = "permissionName" };
@@ -257,7 +257,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var userGroupUpdated = new UserGroup { Id = "Group", Name = "New Group" };
@@ -291,7 +291,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Name = "New Group", };
 
@@ -322,7 +322,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var userGroupUpdated = new UserGroup { Id = "Group", Name = "New Group" };
@@ -356,7 +356,7 @@ namespace Identidade.UnitTests
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
             var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
-            var permissionOperationManagerMoq = new Mock<IPermissionOperationManager>();
+            var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
 
             userGroupRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).Returns(Task.FromResult(true));
             userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));

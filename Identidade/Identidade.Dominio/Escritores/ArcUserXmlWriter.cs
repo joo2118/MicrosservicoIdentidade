@@ -1,9 +1,9 @@
-﻿using Identidade.Dominio.Extensions;
+﻿using Identidade.Dominio.Extensoes;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using System.Xml.Linq;
 
-namespace Identidade.Dominio.Writers
+namespace Identidade.Dominio.Escritores
 {
     public class ArcUserXmlWriter : IArcUserXmlWriter
     {

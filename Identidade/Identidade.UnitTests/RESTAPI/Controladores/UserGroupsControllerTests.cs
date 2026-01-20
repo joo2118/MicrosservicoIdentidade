@@ -8,7 +8,6 @@ using NSubstitute.ExceptionExtensions;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Dtos;
 using Identidade.RESTAPI.Controllers;
 using Identidade.UnitTests.Helpers;
@@ -17,6 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
+using Identidade.Infraestrutura.ServicosCliente;
 
 
 namespace Identidade.UnitTests.RESTAPI.Controllers

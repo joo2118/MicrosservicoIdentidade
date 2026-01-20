@@ -1,7 +1,7 @@
 ﻿using Identidade.Consumidor.Consumidores;
 using Identidade.Consumidor.Helpers;
 using Identidade.Dominio.Helpers;
-using Identidade.Infraestrutura.ClientServices;
+using Identidade.Infraestrutura.ServicosCliente;
 using Identidade.Publico.Commands;
 using Identidade.Publico.Dtos;
 using MassTransit;

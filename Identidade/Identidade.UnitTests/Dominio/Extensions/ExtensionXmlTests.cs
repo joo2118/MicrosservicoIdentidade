@@ -1,5 +1,5 @@
 ﻿using System.Xml.Linq;
-using Identidade.Dominio.Extensions;
+using Identidade.Dominio.Extensoes;
 using Xunit;
 
 namespace Identidade.UnitTests.Domain.Extensions

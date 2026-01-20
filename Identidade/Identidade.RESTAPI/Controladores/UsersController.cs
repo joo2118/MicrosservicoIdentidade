@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Identidade.Dominio.Extensions;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Publico.Dtos;
 using System;
@@ -12,6 +10,8 @@ using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 using Serilog;
 using Microsoft.ApplicationInsights;
+using Identidade.Infraestrutura.ServicosCliente;
+using Identidade.Dominio.Extensoes;
 
 namespace Identidade.RESTAPI.Controladores
 {

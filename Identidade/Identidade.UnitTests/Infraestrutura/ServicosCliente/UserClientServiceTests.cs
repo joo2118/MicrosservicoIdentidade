@@ -6,7 +6,6 @@ using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
@@ -21,6 +20,7 @@ using System.Xml.Linq;
 using Xunit;
 using ValidationResult = FluentValidation.Results.ValidationResult;
 using Identidade.Infraestrutura.Configuracoes;
+using Identidade.Infraestrutura.ServicosCliente;
 
 namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 {

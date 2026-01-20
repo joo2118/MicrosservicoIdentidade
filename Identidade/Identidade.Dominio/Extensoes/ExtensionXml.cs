@@ -1,13 +1,13 @@
 ﻿using System.Xml;
 using System.Xml.Linq;
 
-namespace Identidade.Dominio.Extensions
+namespace Identidade.Dominio.Extensoes
 {
     public static class ExtensionXml
     {
         public static XElement SetAttribute(this XElement elemento, string nomeAtributo, bool valor)
         {
-            return SetAttribute(elemento, nomeAtributo, XmlConvert.ToString(valor));
+            return elemento.SetAttribute(nomeAtributo, XmlConvert.ToString(valor));
         }
 
         /// <summary>

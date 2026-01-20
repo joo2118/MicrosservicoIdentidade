@@ -1,11 +1,10 @@
-﻿using AutoMapper;
-using Elastic.Ingest.Elasticsearch;
+﻿using Elastic.Ingest.Elasticsearch;
 using Elastic.Serilog.Sinks;
+using Identidade.Dominio.Escritores;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
-using Identidade.Dominio.Writers;
 using Identidade.Infraestrutura.Adaptadores;
 using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Data;
@@ -14,6 +13,7 @@ using Identidade.Infraestrutura.Helpers;
 using Identidade.Infraestrutura.Interfaces;
 using Identidade.Infraestrutura.Services;
 using Identidade.Infraestrutura.Servicos;
+using Identidade.Infraestrutura.ServicosCliente;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -31,14 +31,6 @@ namespace Identidade.Infraestrutura.Configuracoes
         public static void Configure(IServiceCollection services, ISettings settings)
         {
             BindServices(services);
-
-            services.AddTransient(provider => new MapperConfiguration(cfg =>
-            {
-                cfg.AddProfile(new UserProfile(provider.GetService<IReadOnlyRepository<User>>(), provider.GetService<IUserGroupRepository>()));
-                cfg.AddProfile(new UserGroupProfile(provider.GetService<IReadOnlyRepository<UserGroup>>(), provider.GetService<IReadOnlyRepository<Permission>>(), provider.GetService<IPermissionOperationManager>()));
-                cfg.AddProfile<PermissionProfile>();
-                cfg.AllowNullCollections = true;
-            }).CreateMapper());
 
             var connectionString = settings.ConnectionStrings.DefaultConnection;
             services.AddDbContext<ARCDbContext>(options =>
@@ -92,14 +84,14 @@ namespace Identidade.Infraestrutura.Configuracoes
                     .AddTransient<ILogInService, EFLoginService>()
                     .AddTransient<IUserValidator, UserValidator>()
                     .AddTransient<IPasswordValidator, PasswordValidator>()
-                    .AddTransient<IReadOnlyRepository<UserGroup>, UserGroupRepository>()
-                    .AddTransient<IUserGroupRepository, UserGroupRepository>()
-                    .AddTransient<IRepository<UserGroup>, UserGroupRepository>()
                     .AddTransient<IReadOnlyRepository<Permission>, PermissionRepository>()
                     .AddTransient<IUpdateConcurrencyResolver, UpdateConcurrencyResolver>()
                     .AddTransient<IAuthorizationService, AuthorizationService>()
                     .AddTransient<IIdGenerator, IdGenerator>()
-                    .AddTransient<IPermissionOperationManager, PermissionOperationManager>()
+                    .AddTransient<IPermissaoOperacaoHelper, PermissaoOperacaoHelper>()
+                    .AddTransient<IFabricaGrupoUsuario, FabricaGrupoUsuario>()
+                    .AddTransient<IFabricaUsuario, FabricaUsuario>()
+                    .AddTransient<IFabricaPermissao, FabricaPermissao>()
                     .AddTransient<IPatchUserMerger, PatchUserMerger>()
                     .AddTransient<IUserClientService, UserClientService>()
                     .AddTransient<IUserGroupClientService, UserGroupClientService>()

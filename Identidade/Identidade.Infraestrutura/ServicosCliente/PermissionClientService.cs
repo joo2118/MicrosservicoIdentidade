@@ -1,9 +1,9 @@
-﻿using AutoMapper;
-using Identidade.Dominio.Interfaces;
+﻿using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
 using Identidade.Publico.Dtos;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Identidade.Infraestrutura.ClientServices
@@ -19,21 +19,19 @@ namespace Identidade.Infraestrutura.ClientServices
     {
         private readonly IReadOnlyRepository<Permission> _permissionRepository;
         private readonly IAuthorizationService _authorizationService;
-        private readonly IMapper _mapper;
+        private readonly IFabricaPermissao _fabricaPermissao;
 
-        public PermissionClientService(IReadOnlyRepository<Permission> permissionRepository, IAuthorizationService authorizationService, IMapper mapper)
+        public PermissionClientService(IReadOnlyRepository<Permission> permissionRepository, IAuthorizationService authorizationService, IFabricaPermissao fabricaPermissao)
         {
             _permissionRepository = permissionRepository;
             _authorizationService = authorizationService;
-            _mapper = mapper;
+            _fabricaPermissao = fabricaPermissao;
         }
 
         public async Task<OutputPermissionDto> GetById(string permissionId)
         {
             var permission = await _permissionRepository.GetById(permissionId);
-            var permissionDto = _mapper.Map<Permission, OutputPermissionDto>(permission);
-
-            return permissionDto;
+            return _fabricaPermissao.MapearParaDtoSaidaPermissao(permission);
         }
 
         public async Task<IReadOnlyCollection<OutputPermissionDto>> Get(string permissionName)
@@ -47,25 +45,19 @@ namespace Identidade.Infraestrutura.ClientServices
         public async Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string permissionId)
         {
             var userGroups = await _authorizationService.GetUserGroupsContainigPermission(permissionId);
-            var userGroupsDto = _mapper.Map<IReadOnlyCollection<UserGroup>, IReadOnlyCollection<OutputUserGroupDto>>(userGroups);
-
-            return userGroupsDto;
+            return userGroups.Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt }).ToArray();
         }
 
         private async Task<IReadOnlyCollection<OutputPermissionDto>> GetAll()
         {
             var permissions = await _permissionRepository.GetAll();
-            var permissionDtos = _mapper.Map<IReadOnlyCollection<Permission>, IReadOnlyCollection<OutputPermissionDto>>(permissions);
-
-            return permissionDtos;
+            return permissions.Select(_fabricaPermissao.MapearParaDtoSaidaPermissao).ToArray();
         }
 
         private async Task<IReadOnlyCollection<OutputPermissionDto>> GetByName(string permissionName)
         {
             var permission = await _permissionRepository.GetByName(permissionName);
-            var permissionDto = _mapper.Map<Permission, OutputPermissionDto>(permission);
-
-            return new[] { permissionDto };
+            return new[] { _fabricaPermissao.MapearParaDtoSaidaPermissao(permission) };
         }
     }
 }

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace Identidade.Dominio.Extensions
+namespace Identidade.Dominio.Extensoes
 {
     public static class ExceptionExtensions
     {

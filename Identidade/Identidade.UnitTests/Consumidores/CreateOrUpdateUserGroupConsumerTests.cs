@@ -5,13 +5,13 @@ using NSubstitute.ExceptionExtensions;
 using Identidade.Consumidor.Consumidores;
 using Identidade.Consumidor.Helpers;
 using Identidade.Dominio.Helpers;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using Identidade.Publico.Dtos;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.Extensibility;
 using Xunit;
+using Identidade.Infraestrutura.ServicosCliente;
 
 namespace Identidade.Consumidor.Tests
 {

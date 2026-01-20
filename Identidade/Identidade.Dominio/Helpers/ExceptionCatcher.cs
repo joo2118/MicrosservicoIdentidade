@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace Identidade.Dominio.Helpers
 {
@@ -14,7 +15,7 @@ namespace Identidade.Dominio.Helpers
             catch (TException e)
             {
                 onCatchException(e);
-                return default(TResponse);
+                return default;
             }
         }
 
@@ -28,6 +29,33 @@ namespace Identidade.Dominio.Helpers
             catch (TException e)
             {
                 onCatchException(e);
+            }
+        }
+
+        public static async Task<TResponse> ExecuteSafeAsync<TException, TResponse>(Func<Task<TResponse>> safeFunction,
+            Func<TException, Task> onCatchException) where TException : AppException
+        {
+            try
+            {
+                return await safeFunction().ConfigureAwait(false);
+            }
+            catch (TException e)
+            {
+                await onCatchException(e).ConfigureAwait(false);
+                return default(TResponse);
+            }
+        }
+
+        public static async Task ExecuteSafeAsync<TException>(Func<Task> safeAction,
+            Func<TException, Task> onCatchException) where TException : AppException
+        {
+            try
+            {
+                await safeAction().ConfigureAwait(false);
+            }
+            catch (TException e)
+            {
+                await onCatchException(e).ConfigureAwait(false);
             }
         }
     }

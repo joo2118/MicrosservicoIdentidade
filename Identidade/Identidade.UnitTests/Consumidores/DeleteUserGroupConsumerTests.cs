@@ -3,12 +3,12 @@ using MassTransit;
 using NSubstitute;
 using Identidade.Consumidor.Consumidores;
 using Identidade.Consumidor.Helpers;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.Extensibility;
 using Xunit;
+using Identidade.Infraestrutura.ServicosCliente;
 
 namespace Identidade.UnitTests.Consumers
 {

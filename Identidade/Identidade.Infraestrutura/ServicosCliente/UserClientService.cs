@@ -4,13 +4,8 @@ using System.Data;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
-
 using Microsoft.Data.SqlClient;
-
-using AutoMapper;
-
 using MassTransit;
-
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
@@ -21,9 +16,8 @@ using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
 using Identidade.Publico.Events;
 using Identidade.Infraestrutura.Configuracoes;
-using Identidade.Dominio.Modelos;
 
-namespace Identidade.Infraestrutura.ClientServices
+namespace Identidade.Infraestrutura.ServicosCliente
 {
     public interface IUserClientService
     {
@@ -32,7 +26,6 @@ namespace Identidade.Infraestrutura.ClientServices
         Task<OutputUserDto> Create(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null);
         Task<OutputUserDto> CreateApi(InputUserDto inputUserDto, string requestUserId, string suggestedId = null);
         Task Delete(string userId, string requestUserId);
-        Task DeleteApi(string userId, string requestUserId);
         Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId);
         Task<IReadOnlyCollection<OutputUserDto>> Get(string login);
         Task<OutputUserDto> GetById(string userId);
@@ -47,26 +40,27 @@ namespace Identidade.Infraestrutura.ClientServices
     {
         private readonly IUserRepository _userRepository;
         private readonly IAuthorizationService _authorizationService;
-        private readonly IMapper _mapper;
         private readonly IUserValidator _userValidator;
         private readonly IPasswordValidator _passwordValidator;
         private readonly IBus _bus;
         private readonly ISettings _settings;
         private readonly IDatabaseConnectionUserModifier _databaseConnectionModifier;
         private readonly IArcUserXmlWriter _arcUserXmlWriter;
+        private readonly IFabricaUsuario _fabricaUsuario;
 
-        public UserClientService(IUserRepository userRepository, IAuthorizationService authorizationService, IMapper mapper,
-            IUserValidator userValidator, IPasswordValidator passwordValidator, IBus bus, ISettings settings, IDatabaseConnectionUserModifier databaseConnectionModifier, IArcUserXmlWriter arcUserXmlWriter)
+        public UserClientService(IUserRepository userRepository, IAuthorizationService authorizationService,
+            IUserValidator userValidator, IPasswordValidator passwordValidator, IBus bus, ISettings settings, IDatabaseConnectionUserModifier databaseConnectionModifier, IArcUserXmlWriter arcUserXmlWriter,
+            IFabricaUsuario fabricaUsuario)
         {
             _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
             _authorizationService = authorizationService ?? throw new ArgumentNullException(nameof(authorizationService));
-            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _userValidator = userValidator ?? throw new ArgumentNullException(nameof(userValidator));
             _passwordValidator = passwordValidator ?? throw new ArgumentNullException(nameof(passwordValidator));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _databaseConnectionModifier = databaseConnectionModifier ?? throw new ArgumentNullException(nameof(databaseConnectionModifier));
             _arcUserXmlWriter = arcUserXmlWriter ?? throw new ArgumentNullException(nameof(arcUserXmlWriter));
+            _fabricaUsuario = fabricaUsuario ?? throw new ArgumentNullException(nameof(fabricaUsuario));
         }
 
         public async Task AssociateToUserGroup(string userId, string userGroupName, string requestUserId)
@@ -79,7 +73,7 @@ namespace Identidade.Infraestrutura.ClientServices
         {
             _userValidator.VerifyExistences(inputUserDto?.SubstituteUsers, inputUserDto?.UserGroups);
 
-            var user = _mapper.Map<InputUserDto, User>(inputUserDto);
+            var user = await _fabricaUsuario.MapearParaUsuarioAsync(inputUserDto);
 
             user.Id = suggestedId;
             inputUserDto.Active = inputUserDto.Active ?? true;
@@ -87,7 +81,7 @@ namespace Identidade.Infraestrutura.ClientServices
             var authenticationType = GetAuthenticationType(inputUserDto.AuthenticationType);
             if (authenticationType == AuthenticationType.AzureAD && string.IsNullOrWhiteSpace(inputUserDto.Email))
                 throw new InvalidOperationException($"Email must be provided for authentication type {AuthenticationType.AzureAD}");
-            var password = (authenticationType == AuthenticationType.ActiveDirectory) ? null : (inputUserDto.Password ?? string.Empty);
+            var password = authenticationType == AuthenticationType.ActiveDirectory ? null : inputUserDto.Password ?? string.Empty;
 
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
             _userRepository.BeginTransaction();
@@ -110,19 +104,19 @@ namespace Identidade.Infraestrutura.ClientServices
                 throw;
             }
 
-            return _mapper.Map<User, OutputUserDto>(user);
+            return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
         }
 
         public async Task<OutputUserDto> Create(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null)
         {
-            Validate(arcUserDto);
+            _fabricaUsuario.ValidarArcUserDto(arcUserDto);
 
             _userValidator.VerifyExistences(arcUserDto.SubstituteUsers, arcUserDto.UserGroups);
 
-            var user = _mapper.Map<User>(arcUserDto);
+            var user = await _fabricaUsuario.MapearParaUsuarioAsync(arcUserDto);
             user.Id = suggestedId;
 
-            var password = (arcUserDto.AuthenticationType == AuthenticationType.ActiveDirectory || arcUserDto.AuthenticationType == AuthenticationType.AzureAD) ? null : (arcUserDto.Password ?? string.Empty);
+            var password = arcUserDto.AuthenticationType == AuthenticationType.ActiveDirectory || arcUserDto.AuthenticationType == AuthenticationType.AzureAD ? null : arcUserDto.Password ?? string.Empty;
 
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
             _userRepository.BeginTransaction();
@@ -133,7 +127,7 @@ namespace Identidade.Infraestrutura.ClientServices
                 if (createdUser == null)
                     throw new AppException(Constants.Exception.cst_NullUser);
 
-                var arcUser = _mapper.Map<ArcUser>(arcUserDto);
+                var arcUser = _fabricaUsuario.MapearParaArcUser(arcUserDto);
 
                 var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType.Value), createdUser.PasswordHistory);
                 var createUpdateResult = CreateUpdateUserARC(arcUserDto, arcXml.ToString(), createdUser);
@@ -145,8 +139,9 @@ namespace Identidade.Infraestrutura.ClientServices
                     throw new InvalidOperationException(Constants.Exception.cst_UserCreationFailed);    
 
                 _userRepository.DefineTransaction(true);
+                await PublishUserCreatedOrUpdated(createdUser, null, requestUserId);
 
-                return _mapper.Map<OutputUserDto>(createdUser);
+                return _fabricaUsuario.MapearParaDtoSaidaUsuario(createdUser);
             }
             catch (Exception)
             {
@@ -196,17 +191,19 @@ namespace Identidade.Infraestrutura.ClientServices
         public async Task<OutputUserDto> GetById(string userId)
         {
             var user = await _userRepository.GetById(userId);
-            var userDto = _mapper.Map<User, OutputUserDto>(user);
-
-            return userDto;
+            return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
         }
 
         public OutputUserDto GetById(string userId, out string password)
         {
             var user = _userRepository.GetById(userId).Result;
-            var userDto = _mapper.Map<User, OutputUserDto>(user);
+            var userDto = _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
 
-            password = userDto.AuthenticationType == AuthenticationType.DatabaseUser ? user.PasswordHash : string.Empty;
+            var authenticationType = GetAuthenticationType(userDto.AuthenticationType);
+            if (userDto.AuthenticationType == null)
+                userDto.AuthenticationType = authenticationType;
+
+            password = authenticationType == AuthenticationType.DatabaseUser ? user.PasswordHash : string.Empty;
             return userDto;
         }
 
@@ -214,9 +211,8 @@ namespace Identidade.Infraestrutura.ClientServices
         {
             var user = await _userRepository.GetById(userId);
             var userGroups = user.UserGroupUsers.Select(ugu => ugu.UserGroup).ToArray();
-            var userGroupDtos = _mapper.Map<UserGroup[], OutputUserGroupDto[]>(userGroups);
 
-            return userGroupDtos;
+            return userGroups.Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt }).ToArray();
         }
 
         public async Task<OutputUserDto> Update(string userId, InputUserDto inputUserDto, string requestUserId)
@@ -234,13 +230,13 @@ namespace Identidade.Infraestrutura.ClientServices
                 var successfulResult = false;
                 if (savedUser != null)
                 {
-                     var updateResult = CreateUpdateUserARC(inputUserDto, inputUserDto.ArcXml, savedUser);
+                    var updateResult = CreateUpdateUserARC(inputUserDto, inputUserDto.ArcXml, savedUser);
                     successfulResult = updateResult.Success && updateResult.Changed;
                 }
 
                 _userRepository.DefineTransaction(successfulResult);
 
-                return _mapper.Map<User, OutputUserDto>(user);
+                return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
             }
             catch (Exception)
             {
@@ -251,7 +247,7 @@ namespace Identidade.Infraestrutura.ClientServices
 
         public async Task<OutputUserDto> Update(string userId, ArcUserDto arcUserDto, string requestUserId)
         {
-            Validate(arcUserDto);
+            _fabricaUsuario.ValidarArcUserDto(arcUserDto);
 
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
             _userRepository.BeginTransaction();
@@ -260,14 +256,15 @@ namespace Identidade.Infraestrutura.ClientServices
                 var currentUser = await _userRepository.GetById(userId);
                 AdjustCollections(arcUserDto, currentUser);
 
-                var updatedUser = _mapper.Map(arcUserDto, currentUser);
+                var updatedUser = await _fabricaUsuario.MapearParaUsuarioAsync(arcUserDto, originalUserLogin: currentUser.UserName);
+                updatedUser.Id = currentUser.Id;
 
                 var savedUser = await _userRepository.Update(updatedUser, arcUserDto.Password);
 
                 if (savedUser == null)
                     throw new AppException(Constants.Exception.cst_NullUser);
 
-                var arcUser = _mapper.Map<ArcUser>(arcUserDto);
+                var arcUser = _fabricaUsuario.MapearParaArcUser(arcUserDto);
 
                 var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType.Value), savedUser.PasswordHistory);
                 var createUpdateResult = CreateUpdateUserARC(arcUserDto, arcXml.ToString(), savedUser);
@@ -280,7 +277,7 @@ namespace Identidade.Infraestrutura.ClientServices
 
                 _userRepository.DefineTransaction(true);
 
-                return _mapper.Map<OutputUserDto>(savedUser);
+                return _fabricaUsuario.MapearParaDtoSaidaUsuario(savedUser);
             }
             catch (Exception)
             {
@@ -294,28 +291,15 @@ namespace Identidade.Infraestrutura.ClientServices
             _userValidator.VerifyExistences(inputUserDto.SubstituteUsers, inputUserDto.UserGroups);
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
 
-            var user = _mapper.Map<InputUserDto, User>(inputUserDto);
+            var user = await _fabricaUsuario.MapearParaUsuarioAsync(inputUserDto);
 
             user.Id = suggestedId;
 
             var authenticationType = GetAuthenticationType(inputUserDto.AuthenticationType);
-            var password = (authenticationType == AuthenticationType.ActiveDirectory) ? null : (inputUserDto.Password ?? string.Empty);
+            var password = authenticationType == AuthenticationType.ActiveDirectory ? null : inputUserDto.Password ?? string.Empty;
 
             var createdUser = await _userRepository.Create(user, password);
             return await PublishUserCreatedOrUpdated(createdUser, inputUserDto.Password, requestUserId);
-        }
-
-        public async Task DeleteApi(string userId, string requestUserId)
-        {
-            _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
-            await _userRepository.Remove(userId);
-
-            await _bus.Publish(
-                new UserDeletedEvent
-                {
-                    UserId = userId,
-                    RequestUserId = requestUserId
-                });
         }
 
         public async Task<OutputUserDto> UpdateApi(string userId, InputUserDto inputUserDto, string requestUserId)
@@ -340,7 +324,7 @@ namespace Identidade.Infraestrutura.ClientServices
         private async Task<IReadOnlyCollection<OutputUserDto>> GetByLogin(string login)
         {
             var user = await _userRepository.GetByName(login);
-            var userDto = _mapper.Map<User, OutputUserDto>(user);
+            var userDto = _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
 
             return new[] { userDto };
         }
@@ -348,9 +332,7 @@ namespace Identidade.Infraestrutura.ClientServices
         private async Task<IReadOnlyCollection<OutputUserDto>> GetAll()
         {
             var users = await _userRepository.GetAll();
-            var userDtos = _mapper.Map<IReadOnlyCollection<User>, IReadOnlyCollection<OutputUserDto>>(users);
-
-            return userDtos;
+            return users.Select(_fabricaUsuario.MapearParaDtoSaidaUsuario).ToArray();
         }
 
         private static void AdjustCollections(UserBaseDto inputUserDto, User user)
@@ -364,7 +346,7 @@ namespace Identidade.Infraestrutura.ClientServices
 
         private async Task<OutputUserDto> PublishUserCreatedOrUpdated(User user, string hashArc, string requestUserId)
         {
-            var userDto = _mapper.Map<User, OutputUserDto>(user);
+            var userDto = _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
             var authenticationType = GetAuthenticationType(userDto.AuthenticationType);
             if (userDto.AuthenticationType == null)
                 userDto.AuthenticationType = authenticationType;
@@ -400,35 +382,18 @@ namespace Identidade.Infraestrutura.ClientServices
 
             AdjustCollections(inputUserDto, user);
 
-            var updatedUser = _mapper.Map(inputUserDto, user);
+            var updatedUser = _fabricaUsuario
+                .MapearParaUsuarioAsync(inputUserDto, originalUserLogin: user.UserName)
+                .GetAwaiter()
+                .GetResult();
 
-            if (!string.IsNullOrWhiteSpace(inputUserDto.Login) && inputUserDto.Login != updatedUser.UserName) // If the inputLogin is not null, then the userName should be updated.
+            if (!string.IsNullOrWhiteSpace(inputUserDto.Login) && inputUserDto.Login != updatedUser.UserName)
             {
                 _userValidator.Validate(inputUserDto.Login);
                 updatedUser.UserName = inputUserDto.Login;
             }
+
             return updatedUser;
-        }
-
-        private void Validate(ArcUserDto user)
-        {
-            if (user == null)
-                throw new InvalidOperationException(Constants.Exception.cst_NullUser);
-
-            if (string.IsNullOrWhiteSpace(user.Login))
-                throw new ArgumentException(Constants.Exception.cst_InvalidLogin);
-
-            if (user.AuthenticationType == AuthenticationType.AzureAD && string.IsNullOrWhiteSpace(user.Email))
-                throw new InvalidOperationException($"Email must be provided for authentication type {AuthenticationType.AzureAD}");
-
-            if ((user.AuthenticationType == AuthenticationType.AzureAD || user.AuthenticationType == AuthenticationType.ActiveDirectory) && !string.IsNullOrWhiteSpace(user.Password))
-                throw new InvalidOperationException($"Password must be empty for authentication type {user.AuthenticationType}");
-
-            if (user.AuthenticationType == AuthenticationType.DatabaseUser && string.IsNullOrWhiteSpace(user.Password))
-                throw new InvalidOperationException($"Password must be provided for authentication type {user.AuthenticationType}");
-
-            if (!string.IsNullOrWhiteSpace(user.Password))
-                _passwordValidator.Validate(user.Password);
         }
 
         private static string GetDatabaseAuthenticationStringValueAttribute(AuthenticationType authenticationType)

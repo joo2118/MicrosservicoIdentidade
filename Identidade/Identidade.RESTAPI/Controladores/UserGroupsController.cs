@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Dtos;
 using System.Collections.Generic;
 using System.Net;
@@ -11,6 +10,7 @@ using System;
 using Microsoft.ApplicationInsights;
 using Serilog;
 using Identidade.RESTAPI.Controladores;
+using Identidade.Infraestrutura.ServicosCliente;
 
 namespace Identidade.RESTAPI.Controllers
 {

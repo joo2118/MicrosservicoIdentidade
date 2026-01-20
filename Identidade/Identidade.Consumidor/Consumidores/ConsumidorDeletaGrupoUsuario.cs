@@ -1,9 +1,9 @@
 ﻿using MassTransit;
 using Identidade.Consumidor.Helpers;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Publico.Commands;
 using System.Threading.Tasks;
 using Microsoft.ApplicationInsights;
+using Identidade.Infraestrutura.ServicosCliente;
 
 namespace Identidade.Consumidor.Consumidores
 {
