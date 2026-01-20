@@ -1,16 +1,19 @@
-﻿using AutoMapper;
-using MassTransit;
-using Microsoft.Data.SqlClient;
-using Moq;
+﻿using Identidade.Dominio.Fabricas;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
+using Identidade.Dominio.Repositorios;
 using Identidade.Dominio.Servicos;
+using Identidade.Infraestrutura.Configuracoes;
 using Identidade.Infraestrutura.Helpers;
+using Identidade.Infraestrutura.ServicosCliente;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
 using Identidade.Publico.Events;
 using Identidade.UnitTests.Helpers;
+using MassTransit;
+using Microsoft.Data.SqlClient;
+using Moq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,10 +21,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Xunit;
-using ValidationResult = FluentValidation.Results.ValidationResult;
-using Identidade.Infraestrutura.Configuracoes;
-using Identidade.Infraestrutura.ServicosCliente;
-using Identidade.Dominio.Repositorios;
 
 namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 {
@@ -32,23 +31,23 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             return ParameterTestHelper.GetParameters(s => s
                 .AddNullableParameter("userRepository", Mock.Of<IUserRepository>())
                 .AddNullableParameter("authorizationService", Mock.Of<IAuthorizationService>())
-                .AddNullableParameter("mapper", Mock.Of<IMapper>())
                 .AddNullableParameter("userValidator", Mock.Of<IUserValidator>())
                 .AddNullableParameter("passwordValidator", Mock.Of<IPasswordValidator>())
                 .AddNullableParameter("bus", Mock.Of<IBus>())
                 .AddNullableParameter("settings", Mock.Of<ISettings>())
                 .AddNullableParameter("databaseConnectionModifier", Mock.Of<IDatabaseConnectionUserModifier>())
-                .AddNullableParameter("arcUserXmlWriter", Mock.Of<IArcUserXmlWriter>()));
+                .AddNullableParameter("arcUserXmlWriter", Mock.Of<IArcUserXmlWriter>())
+                .AddNullableParameter("fabricaUsuario", Mock.Of<IFabricaUsuario>()));
         }
 
         [Theory]
         [MemberData(nameof(GetUserClientServiceConstructorTestParameters))]
-        public void UserClientServiceConstructorTest(IUserRepository userRepository, IAuthorizationService authorizationService, IMapper mapper,
-            IUserValidator userValidator, IPasswordValidator passwordValidator, IBus bus, ISettings settings, IDatabaseConnectionUserModifier databaseConnectionModifier, IArcUserXmlWriter arcUserXmlWriter,
+        public void UserClientServiceConstructorTest(IUserRepository userRepository, IAuthorizationService authorizationService, 
+            IUserValidator userValidator, IPasswordValidator passwordValidator, IBus bus, ISettings settings, IDatabaseConnectionUserModifier databaseConnectionModifier, IArcUserXmlWriter arcUserXmlWriter, IFabricaUsuario fabricaUsuario,
             string missingParameterName = null)
         {
-            UserClientService Create() => new UserClientService(userRepository, authorizationService, mapper,
-                userValidator, passwordValidator, bus, settings, databaseConnectionModifier, arcUserXmlWriter);
+            UserClientService Create() => new UserClientService(userRepository, authorizationService, 
+                userValidator, passwordValidator, bus, settings, databaseConnectionModifier, arcUserXmlWriter, fabricaUsuario);
 
             if (string.IsNullOrWhiteSpace(missingParameterName))
             {
@@ -76,45 +75,56 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 ArcXml = ""
             };
 
-            var outputUserDto = new OutputUserDto
+            var mappedUser = new User
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                UserName = inputUserDto.Login
             };
 
-            var user = new User
+            var outputUserDto = new OutputUserDto
             {
-                Name = "User"
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mappedUser);
+
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(outputUserDto);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
-            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
+            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(mappedUser);
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var createdUser = await userClientServiceMoq.Create(inputUserDto, "", null);
 
-            Assert.Equal(createdUser.Name, inputUserDto.Name);
             Assert.NotNull(createdUser);
+            Assert.Equal(inputUserDto.Name, createdUser.Name);
+            Assert.Equal(inputUserDto.Login, createdUser.Login);
         }
 
         [Fact]
@@ -130,46 +140,63 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 ArcXml = ""
             };
 
-            var outputUserDto = new OutputUserDto
+            var mappedUser = new User
             {
-                SubstituteUsers = null,
-                UserGroups = null,
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                UserName = inputUserDto.Login
             };
 
-            var user = new User
+            var outputUserDto = new OutputUserDto
             {
-                Name = "User"
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration,
+                // FabricaUsuario returns empty arrays when null
+                UserGroups = Array.Empty<string>(),
+                SubstituteUsers = Array.Empty<string>()
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mappedUser);
+
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(outputUserDto);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
-            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
+            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(mappedUser);
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var createdUser = await userClientServiceMoq.Create(inputUserDto, "", null);
 
-            Assert.Equal(createdUser.Name, inputUserDto.Name);
             Assert.NotNull(createdUser);
+            Assert.Equal(inputUserDto.Name, createdUser.Name);
             userValidatorMoq.Verify(p => p.VerifyExistences(null, null), Times.Once);
+            Assert.NotNull(createdUser.UserGroups);
+            Assert.NotNull(createdUser.SubstituteUsers);
+            Assert.Empty(createdUser.UserGroups);
+            Assert.Empty(createdUser.SubstituteUsers);
         }
 
         [Fact]
@@ -188,47 +215,58 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 ArcXml = ""
             };
 
-            var outputUserDto = new OutputUserDto
+            var mappedUser = new User
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                UserName = inputUserDto.Login
             };
 
-            var user = new User
+            var outputUserDto = new OutputUserDto
             {
-                Name = "User"
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration,
+                AuthenticationType = null
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mappedUser);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
-            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
+            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(mappedUser);
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var createdUser = await userClientServiceMoq.Create(inputUserDto, "", null);
 
-            Assert.Equal(createdUser.Name, inputUserDto.Name);
-            Assert.Null(createdUser.AuthenticationType);
             Assert.NotNull(createdUser);
+            Assert.Equal(inputUserDto.Name, createdUser.Name);
+            Assert.Null(createdUser.AuthenticationType);
         }
 
         [Fact]
@@ -248,23 +286,25 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 ArcXml = ""
             };
 
-            var user = new User
-            {
-                Name = "User"
-            };
-
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                Mock.Of<IUserValidator>(), passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                Mock.Of<IUserValidator>(),
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await userClientServiceMoq.Create(inputUserDto, "", null));
             Assert.Equal(expectedMessage, ex.Result.Message);
@@ -324,28 +364,36 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaArcUser(It.IsAny<ArcUserDto>())).Returns(arcUser);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
             userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
             arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
             var createdUser = await userClientServiceMoq.Create(arcUserDto, "", null);
 
@@ -383,20 +431,29 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync((User)null);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<AppException>(async () => await userClientServiceMoq.Create(arcUser, string.Empty, null));
             Assert.Equal(Constants.Exception.cst_NullUser, ex.Result.Message);
@@ -436,16 +493,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             var sqlParameters = new List<SqlParameter>
@@ -460,8 +517,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await userClientServiceMoq.Create(arcUserDto, string.Empty, null));
             Assert.Equal(expectedMessage, ex.Result.Message);
@@ -499,16 +564,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             var sqlParameters = new List<SqlParameter>
@@ -523,8 +588,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await userClientServiceMoq.Create(arcUserDto, string.Empty, null));
             Assert.Equal(Constants.Exception.cst_UserCreationFailed, ex.Result.Message);
@@ -566,50 +639,48 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
         {
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
+
+            fabricaUsuarioMoq
+                .Setup(s => s.ValidarArcUserDto(It.IsAny<ArcUserDto>()))
+                .Callback<ArcUserDto>(dto =>
+                {
+                    // reproduce real behavior for the validation scenarios in this test
+                    new FabricaUsuario(Mock.Of<IReadOnlyRepository<User>>(), Mock.Of<IUserGroupRepository>()).ValidarArcUserDto(dto);
+                });
 
             if (!validPassword)
                 passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Throws(expectedException);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                Mock.Of<IUserValidator>(), passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                Mock.Of<IUserValidator>(),
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync(expectedException.GetType(), async () => await userClientServiceMoq.Create(arcUser, string.Empty, null));
             Assert.Equal(expectedException.Message, ex.Result.Message);
         }
 
-        public static IEnumerable<object[]> GetUpdateFromArcUserUserClientServiceArcUserValidationParameters()
-        {
-            var invalidAzureAdUser = new ArcUserDto("TestEmail@test.com", string.Empty, new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)).ToString(), false, true, AuthenticationType.AzureAD, Language.Portugues)
-            {
-                SubstituteUsers = new string[] { },
-                UserGroups = new string[] { },
-                Name = "UserClient",
-                Login = "login"
-            };
-            invalidAzureAdUser.Email = string.Empty;
-
-            var invalidPasswordUser = new ArcUserDto(string.Empty, "TestPassword", new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)).ToString(), false, true, AuthenticationType.DatabaseUser, Language.Portugues)
-            {
-                SubstituteUsers = new string[] { },
-                UserGroups = new string[] { },
-                Name = "UserClient",
-                Login = "login"
-            };
-
-
-            yield return new object[] { null, new InvalidOperationException(Constants.Exception.cst_NullUser) };
-            yield return new object[] { invalidAzureAdUser, new InvalidOperationException($"Email must be provided for authentication type {AuthenticationType.AzureAD}") };
-            yield return new object[] { invalidPasswordUser, new InvalidOperationException("Invalid Password"), false };
-        }
-
         [Fact]
         public async Task UpdateFromArcUserUserClientServiceTest()
         {
-            var arcUserDto = new ArcUserDto("TestEmail@test.com", "TestPassword", new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)).ToString(), false, true, AuthenticationType.DatabaseUser, Language.Portugues)
+            var arcUserDto = new ArcUserDto(
+                "TestEmail@test.com",
+                "TestPassword",
+                new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)).ToString(),
+                false,
+                true,
+                AuthenticationType.DatabaseUser,
+                Language.Portugues)
             {
                 SubstituteUsers = new string[] { "", "", "" },
                 UserGroups = new string[] { "", "", "" },
@@ -617,54 +688,83 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 Login = "login"
             };
 
-            var arcUser = new ArcUser("login", "UserClient", "TestEmail@test.com", "TestPassword", Language.Portugues.ToString(), null, null, AuthenticationType.DatabaseUser.ToString(), new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)), false, true);
+            var arcUser = new ArcUser(
+                "login",
+                "UserClient",
+                "TestEmail@test.com",
+                "TestPassword",
+                Language.Portugues.ToString(),
+                null,
+                null,
+                AuthenticationType.DatabaseUser.ToString(),
+                new DateTimeOffset(2023, 04, 18, 1, 2, 3, TimeSpan.FromHours(3)),
+                false,
+                true);
 
             var outputUserDto = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
                 Name = "UserClient",
                 Login = "login",
                 PasswordExpiration = DateTime.Now
             };
 
-            var user = new User
+            var currentUser = new User
             {
-                Name = "User",
+                Id = "id",
+                UserName = "login",
+                UserGroupUsers = new List<UserGroupUser>(),
+                UserSubstitutions = new List<UserSubstitution>(),
                 PasswordHistory = "testHistory"
+            };
+
+            var updatedUser = new User
+            {
+                Id = currentUser.Id,
+                UserName = arcUserDto.Login,
+                Name = arcUserDto.Name,
+                PasswordHistory = currentUser.PasswordHistory
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.ValidarArcUserDto(It.IsAny<ArcUserDto>()));
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(updatedUser);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaArcUser(It.IsAny<ArcUserDto>())).Returns(arcUser);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
-            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
+            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(currentUser);
+            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(updatedUser);
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
+            arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), updatedUser.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
-            var updatedUser = await userClientServiceMoq.Update(string.Empty, arcUserDto, null);
+            var result = await userClientServiceMoq.Update(string.Empty, arcUserDto, null);
 
-            Assert.NotNull(updatedUser);
-            Assert.Equal(updatedUser.Name, outputUserDto.Name);
-            Assert.Equal(updatedUser.Login, outputUserDto.Login);
-            Assert.Equal(updatedUser.PasswordExpiration, outputUserDto.PasswordExpiration);
+            Assert.NotNull(result);
+            Assert.Equal(outputUserDto.Name, result.Name);
+            Assert.Equal(outputUserDto.Login, result.Login);
         }
 
         [Fact]
@@ -695,20 +795,29 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync((User)null);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<AppException>(async () => await userClientServiceMoq.Update(string.Empty, arcUser, null));
             Assert.Equal(Constants.Exception.cst_NullUser, ex.Result.Message);
@@ -748,16 +857,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             var sqlParameters = new List<SqlParameter>
@@ -772,8 +881,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await userClientServiceMoq.Update(string.Empty, arcUserDto, null));
             Assert.Equal(expectedMessage, ex.Result.Message);
@@ -811,16 +928,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
             var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User>(It.IsAny<ArcUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<ArcUser>(It.IsAny<ArcUserDto>())).Returns(arcUser);
-            mapperMoq.Setup(s => s.Map<OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<ArcUserDto>(), null, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
+
             settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
             var sqlParameters = new List<SqlParameter>
@@ -835,33 +952,20 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             arcUserXmlWriteMoq.Setup(s => s.Write(arcUser, It.IsAny<string>(), user.PasswordHistory)).Returns(new XElement("root"));
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), arcUserXmlWriteMoq.Object);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
             var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await userClientServiceMoq.Update(string.Empty, arcUserDto, null));
             Assert.Equal(Constants.Exception.cst_UserUpdateFailedNoChange, ex.Result.Message);
             return Task.CompletedTask;
-        }
-
-        [Theory]
-        [MemberData(nameof(GetUpdateFromArcUserUserClientServiceArcUserValidationParameters))]
-        public void UpdateFromArcUserUserClientService_ValidationTest(ArcUserDto arcUser, Exception expectedException, bool validPassword = true)
-        {
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            if (!validPassword)
-                passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Throws(expectedException);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                Mock.Of<IUserValidator>(), passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var ex = Assert.ThrowsAsync(expectedException.GetType(), async () => await userClientServiceMoq.Update(string.Empty, arcUser, null));
-            Assert.Equal(expectedException.Message, ex.Result.Message);
         }
 
         [Fact]
@@ -869,11 +973,11 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
         {
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
             userRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));
 
@@ -881,8 +985,16 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             userRepositoryMoq.Setup(s => s.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             await userClientServiceMoq.Delete("", null);
 
@@ -890,30 +1002,25 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             userRepositoryMoq.Verify(v => v.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()), Times.Once());
             userRepositoryMoq.Verify(v => v.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Once());
         }
+
         [Fact]
-        public void GetIReadOnlyCollectionOutputUserDtoGetAll()
+        public async Task GetIReadOnlyCollectionOutputUserDtoGetAll()
         {
             var user1 = new User { Id = "USR_GUID1", UserName = "user1" };
             var user2 = new User { Id = "USR_GUID2", UserName = "user2" };
 
             var outputUserDto1 = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
                 Name = "UserClient1",
                 Login = "login1",
                 PasswordExpiration = DateTime.Now
-
             };
 
             var outputUserDto2 = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
                 Name = "UserClient2",
                 Login = "login2",
                 PasswordExpiration = DateTime.Now
-
             };
 
             var allUsers = new List<User> { user1, user2 };
@@ -921,240 +1028,226 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<IReadOnlyCollection<User>, IReadOnlyCollection<OutputUserDto>>(allUsers)).Returns(allUsersDto);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
             userRepositoryMoq.Setup(s => s.GetAll()).ReturnsAsync(allUsers);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns((User u) => allUsersDto.First(d => d.Login == (u.UserName == "user1" ? "login1" : "login2")));
 
-            var retornoGetAll = userClientServiceMoq.Get(null);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
+
+            var retornoGetAll = await userClientServiceMoq.Get(null);
 
             Assert.NotNull(retornoGetAll);
-            Assert.Equal(retornoGetAll.Result.Count, allUsers.Count);
+            Assert.Equal(allUsers.Count, retornoGetAll.Count);
         }
+
         [Fact]
-        public void GetIReadOnlyCollectionOutputUserDtoGetByLogin()
+        public async Task GetIReadOnlyCollectionOutputUserDtoGetByLogin()
         {
             var user = new User { Id = "USR_GUID1", UserName = "UserClient1" };
 
             var outputUserDto = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
                 Name = "UserClient1",
                 Login = "login1",
                 PasswordExpiration = DateTime.Now
-
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
             userRepositoryMoq.Setup(s => s.GetByName(It.IsAny<string>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
 
-            var retornoGetByName = userClientServiceMoq.Get("login1");
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
+
+            var retornoGetByName = await userClientServiceMoq.Get("login1");
 
             Assert.NotNull(retornoGetByName);
-            Assert.Equal("UserClient1", retornoGetByName.Result.Select(s => s.Name).FirstOrDefault());
+            Assert.Equal("UserClient1", retornoGetByName.Select(s => s.Name).FirstOrDefault());
         }
 
         [Fact]
-        public void GetById()
+        public async Task GetById()
         {
             var user = new User { Id = "USR_GUID1", UserName = "UserClient1" };
 
             var outputUserDto = new OutputUserDto
             {
                 Id = "USR_GUID1",
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
                 Name = "UserClient1",
                 Login = "login1",
                 PasswordExpiration = DateTime.Now
-
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
             userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
 
-            var retornoGetById = userClientServiceMoq.GetById("USR_GUID1");
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
+
+            var retornoGetById = await userClientServiceMoq.GetById("USR_GUID1");
 
             Assert.NotNull(retornoGetById);
-            Assert.Equal("USR_GUID1", retornoGetById.Result.Id);
+            Assert.Equal("USR_GUID1", retornoGetById.Id);
         }
 
         [Fact]
-        public void GetUserGroups()
+        public async Task GetUserGroups()
         {
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
             var user1 = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
             var userGroup1 = new UserGroup { Id = "Group1", Name = "New Group1" };
             var userGroupUser1 = new UserGroupUser(userGroup1, user1);
 
-            var user2 = new User { Id = "User1", Name = "New User1", UserName = "new.user2", Email = "new.user2@email.com" };
-            var userGroup2 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser2 = new UserGroupUser(userGroup2, user2);
+            var user2 = new User { Id = "User2", Name = "New User2", UserName = "new.user2", Email = "new.user2@email.com" };
+            var userGroupUser2 = new UserGroupUser(userGroup1, user2);
 
-            var userGroup = new UserGroup
-            {
-                Id = "User1",
-                Name = "New Group1",
-                UserGroupUsers = new UserGroupUser[] { userGroupUser1, userGroupUser2 },
-            };
-            var superUser = new User { Id = "superUser", Name = "New Group1", UserGroupUsers = userGroup.UserGroupUsers };
-
-            var outputUserGroupDto1 = new OutputUserGroupDto
-            {
-                Id = "Group1",
-                Name = "New Group1",
-            };
-
-            var allOutputUserDto = new OutputUserGroupDto[] { outputUserGroupDto1 };
+            var superUser = new User { Id = "superUser", Name = "Super", UserGroupUsers = new[] { userGroupUser1, userGroupUser2 } };
 
             userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(superUser);
-            mapperMoq.Setup(s => s.Map<UserGroup[], OutputUserGroupDto[]>(It.IsAny<UserGroup[]>())).Returns(allOutputUserDto);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
-            var retornoUserGroups = userClientServiceMoq.GetUserGroups("superUser");
+            var retornoUserGroups = await userClientServiceMoq.GetUserGroups("superUser");
 
-            Assert.NotNull(retornoUserGroups.Result);
-            Assert.Equal("Group1", retornoUserGroups.Result.Select(s => s.Id).FirstOrDefault());
+            Assert.NotNull(retornoUserGroups);
+            Assert.Equal("Group1", retornoUserGroups.Select(s => s.Id).FirstOrDefault());
         }
 
         [Fact]
-        public void DissociateFromUserGroup()
+        public async Task DissociateFromUserGroup_PublishesEvent()
         {
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
-            var user = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            authorizationServiceMoq.Setup(s => s.DissociateUserFromUserGroup(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.FromResult(user));
+            var user = new User { Id = "User1", UserName = "new.user1" };
+            authorizationServiceMoq.Setup(s => s.DissociateUserFromUserGroup(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
 
-            var settingsAuthenticationType = SettingsAuthenticationType.User;
-            settingsMoq.Setup(s => s.AuthenticationType).Returns(settingsAuthenticationType);
+            settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
-            var outputUserDto = new OutputUserDto
-            {
-                Id = "USR_GUID1",
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient1",
-                Login = "login1",
-                PasswordExpiration = DateTime.Now
-            };
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(new OutputUserDto { Id = user.Id, Login = user.UserName, AuthenticationType = AuthenticationType.ActiveDirectory });
 
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var userCreatedOrUpdatedEvent = new UserCreatedOrUpdatedEvent
-            {
-                User = outputUserDto,
-                AuthenticationType = AuthenticationType.ActiveDirectory,
-                PasswordHash = user.PasswordHash,
-                HashArc = "",
-                RequestUserId = ""
-            };
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
-            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.FromResult(userCreatedOrUpdatedEvent));
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var retorno = userClientServiceMoq.DissociateFromUserGroup(user.Id, null, null);
+            await userClientServiceMoq.DissociateFromUserGroup(user.Id, null, null);
 
             busMoq.Verify(v => v.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.True(retorno.IsCompleted);
         }
 
         [Fact]
-        public void AssociateToUserGroup()
+        public async Task AssociateToUserGroup_PublishesEvent()
         {
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
 
-            var user = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            authorizationServiceMoq.Setup(s => s.AssociateUserToUserGroup(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.FromResult(user));
+            var user = new User { Id = "User1", UserName = "new.user1" };
+            authorizationServiceMoq.Setup(s => s.AssociateUserToUserGroup(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
 
-            var settingsAuthenticationType = SettingsAuthenticationType.User;
-            settingsMoq.Setup(s => s.AuthenticationType).Returns(settingsAuthenticationType);
+            settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
-            var outputUserDto = new OutputUserDto
-            {
-                Id = "USR_GUID1",
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient1",
-                Login = "login1",
-                PasswordExpiration = DateTime.Now
-            };
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(new OutputUserDto { Id = user.Id, Login = user.UserName, AuthenticationType = AuthenticationType.ActiveDirectory });
 
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var userCreatedOrUpdatedEvent = new UserCreatedOrUpdatedEvent
-            {
-                User = outputUserDto,
-                AuthenticationType = AuthenticationType.ActiveDirectory,
-                PasswordHash = user.PasswordHash,
-                HashArc = "",
-                RequestUserId = ""
-            };
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
-            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.FromResult(userCreatedOrUpdatedEvent));
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var retorno = userClientServiceMoq.AssociateToUserGroup(user.Id, null, null);
+            await userClientServiceMoq.AssociateToUserGroup(user.Id, null, null);
 
             busMoq.Verify(v => v.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.True(retorno.IsCompleted);
         }
 
         [Fact]
@@ -1164,149 +1257,149 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             {
                 Name = "UserClient",
                 Login = "login",
-                PasswordExpiration = DateTime.Now,
+                PasswordExpiration = DateTimeOffset.UtcNow,
                 ArcXml = "",
                 Password = "password",
                 AuthenticationType = AuthenticationType.DatabaseUser
             };
 
+            var currentUser = new User
+            {
+                Id = "id",
+                UserName = "login",
+                UserGroupUsers = new List<UserGroupUser>(),
+                UserSubstitutions = new List<UserSubstitution>(),
+                PasswordHistory = "testHistory"
+            };
+
+            var mappedUpdatedUser = new User
+            {
+                Id = currentUser.Id,
+                UserName = inputUserDto.Login,
+                Name = inputUserDto.Name,
+                PasswordHistory = currentUser.PasswordHistory,
+                PasswordExpiration = inputUserDto.PasswordExpiration
+            };
+
             var outputUserDto = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration
             };
-            var user1 = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            var userGroup1 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser1 = new UserGroupUser(userGroup1, user1);
-
-            var user2 = new User { Id = "User1", Name = "New User1", UserName = "new.user2", Email = "new.user2@email.com" };
-            var userGroup2 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser2 = new UserGroupUser(userGroup2, user2);
-
-            var userGroup = new UserGroup
-            {
-                Id = "User1",
-                Name = "New Group1",
-                UserGroupUsers = new UserGroupUser[] { userGroupUser1, userGroupUser2 },
-            };
-
-            var substituteUser = new User { Id = "sub" };
-            var activeUser = new User { Id = "activeUser" };
-            var userSubstitution = new UserSubstitution(activeUser, substituteUser);
-            var UserSubstitutionsList = new List<UserSubstitution>();
-            UserSubstitutionsList.Add(userSubstitution);
-
-            var user = new User { Id = "superUser", Name = "New Group1", UserGroupUsers = userGroup.UserGroupUsers, UserSubstitutions = UserSubstitutionsList };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserDto>(), It.IsAny<User>())).Returns(user);
+            settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
 
-            ValidationResult validationResult = new ValidationResult { };
-            passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Returns(validationResult);
-
-            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(user));
+            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(currentUser);
+            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(mappedUpdatedUser);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
-
-            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mappedUpdatedUser);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(outputUserDto);
 
-            var savedUser = await userClientServiceMoq.Update(user.Id, inputUserDto, null);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
+
+            var savedUser = await userClientServiceMoq.Update(currentUser.Id, inputUserDto, null);
 
             Assert.NotNull(savedUser);
-            Assert.Equal(savedUser.Name, inputUserDto.Name);
+            Assert.Equal(inputUserDto.Name, savedUser.Name);
+            Assert.Equal(inputUserDto.Login, savedUser.Login);
         }
 
         [Fact]
-        public async Task UpdateUserClientServiceParametersValidation()
+        public async Task UpdateApiUserClientService()
         {
             var inputUserDto = new InputUserDto
             {
                 Name = "UserClient",
-                PasswordExpiration = DateTime.Now,
+                Login = "login",
+                PasswordExpiration = DateTimeOffset.UtcNow,
                 ArcXml = "",
+                Password = "password",
                 AuthenticationType = AuthenticationType.DatabaseUser
+            };
+
+            var mappedUser = new User
+            {
+                Name = inputUserDto.Name,
+                UserName = inputUserDto.Login
             };
 
             var outputUserDto = new OutputUserDto
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration
             };
-            var user1 = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            var userGroup1 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser1 = new UserGroupUser(userGroup1, user1);
 
-            var user2 = new User { Id = "User1", Name = "New User1", UserName = "new.user2", Email = "new.user2@email.com" };
-            var userGroup2 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser2 = new UserGroupUser(userGroup2, user2);
-
-            var userGroup = new UserGroup
+            var currentUser = new User
             {
-                Id = "User1",
-                Name = "New Group1",
-                UserGroupUsers = new UserGroupUser[] { userGroupUser1, userGroupUser2 },
+                Id = "id",
+                UserName = "login",
+                UserGroupUsers = new List<UserGroupUser>(),
+                UserSubstitutions = new List<UserSubstitution>(),
+                PasswordHistory = "testHistory"
             };
-
-            var substituteUser = new User { Id = "sub" };
-            var activeUser = new User { Id = "activeUser" };
-            var userSubstitution = new UserSubstitution(activeUser, substituteUser);
-            var UserSubstitutionsList = new List<UserSubstitution>();
-            UserSubstitutionsList.Add(userSubstitution);
-
-            var user = new User { Id = "superUser", Name = "New Group1", UserGroupUsers = userGroup.UserGroupUsers, UserSubstitutions = UserSubstitutionsList };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
+            var arcUserXmlWriteMoq = new Mock<IArcUserXmlWriter>();
 
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserDto>(), It.IsAny<User>())).Returns(user);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(mappedUser);
+            fabricaUsuarioMoq.Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>())).Returns(outputUserDto);
 
-            ValidationResult validationResult = new ValidationResult { };
-            passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Returns(validationResult);
+            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(currentUser);
+            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(currentUser);
 
-            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(user));
+            busMoq.Setup(s => s.Publish(It.IsAny<UserCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                arcUserXmlWriteMoq.Object,
+                fabricaUsuarioMoq.Object);
 
-            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
-            userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var savedUser = await userClientServiceMoq.Update(user.Id, inputUserDto, null);
+            var savedUser = await userClientServiceMoq.UpdateApi(currentUser.Id, inputUserDto, null);
 
             Assert.NotNull(savedUser);
-            Assert.Null(inputUserDto.Login);
-            Assert.Null(inputUserDto.Password);
             Assert.Equal(savedUser.Name, inputUserDto.Name);
+            Assert.Equal(savedUser.Login, inputUserDto.Login);
         }
 
         private static void SetMockConfigureParametersToCreateUpdate(Mock<IUserRepository> userRepositoryMoq, List<SqlParameter> sqlParameters = null)
@@ -1314,6 +1407,7 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
             sqlParameters ??= new List<SqlParameter>
             {
                 new SqlParameter(Constants.cst_Erro, ""),
+
                 new SqlParameter(Constants.cst_FoiAlterado, true)
             };
 
@@ -1325,8 +1419,6 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                     parameters = sqlParameters;
                 });
         }
-
-        delegate void ConfigureParametersToCreateUpdateCallback(out List<SqlParameter> parameters, string param1, DateTime param2, string param3, string param4, int param5, string param6);
 
         [Fact]
         public async Task CreateApiUserClientService()
@@ -1341,359 +1433,56 @@ namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
                 ArcXml = ""
             };
 
-            var outputUserDto = new OutputUserDto
+            var mappedUser = new User
             {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
+                Name = inputUserDto.Name,
+                UserName = inputUserDto.Login
             };
 
-            var user = new User
+            var outputUserDto = new OutputUserDto
             {
-                Name = "User"
+                Name = inputUserDto.Name,
+                Login = inputUserDto.Login,
+                PasswordExpiration = inputUserDto.PasswordExpiration
             };
 
             var userRepositoryMoq = new Mock<IUserRepository>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
+            var fabricaUsuarioMoq = new Mock<IFabricaUsuario>();
             var userValidatorMoq = new Mock<IUserValidator>();
             var passwordValidatorMoq = new Mock<IPasswordValidator>();
             var busMoq = new Mock<IBus>();
             var settingsMoq = new Mock<ISettings>();
 
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaUsuarioAsync(It.IsAny<InputUserDto>(), null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(mappedUser);
+
+            fabricaUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaUsuario(It.IsAny<User>()))
+                .Returns(outputUserDto);
 
             SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
 
-            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
+            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(mappedUser);
             userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
+            var userClientServiceMoq = new UserClientService(
+                userRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                userValidatorMoq.Object,
+                passwordValidatorMoq.Object,
+                busMoq.Object,
+                settingsMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                Mock.Of<IArcUserXmlWriter>(),
+                fabricaUsuarioMoq.Object);
 
             var createdUser = await userClientServiceMoq.CreateApi(inputUserDto, "", null);
 
-            Assert.Equal(createdUser.Name, inputUserDto.Name);
             Assert.NotNull(createdUser);
-        }
-
-        [Fact]
-        public async Task DeleteApiUserClient()
-        {
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            userRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));
-
-            userRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).ReturnsAsync(true);
-
-            userRepositoryMoq.Setup(s => s.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            await userClientServiceMoq.DeleteApi("", null);
-
-            userRepositoryMoq.Verify(v => v.Remove(It.IsAny<string>()), Times.Once());
-            userRepositoryMoq.Verify(v => v.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()), Times.Never());
-            userRepositoryMoq.Verify(v => v.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Never());
-        }
-
-        [Fact]
-        public async Task UpdateApiUserClientService()
-        {
-            var inputUserDto = new InputUserDto
-            {
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now,
-                ArcXml = "",
-                Password = "password",
-                AuthenticationType = AuthenticationType.DatabaseUser
-            };
-
-            var outputUserDto = new OutputUserDto
-            {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
-            };
-            var user1 = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            var userGroup1 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser1 = new UserGroupUser(userGroup1, user1);
-
-            var user2 = new User { Id = "User1", Name = "New User1", UserName = "new.user2", Email = "new.user2@email.com" };
-            var userGroup2 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser2 = new UserGroupUser(userGroup2, user2);
-
-            var userGroup = new UserGroup
-            {
-                Id = "User1",
-                Name = "New Group1",
-                UserGroupUsers = new UserGroupUser[] { userGroupUser1, userGroupUser2 },
-            };
-
-            var substituteUser = new User { Id = "sub" };
-            var activeUser = new User { Id = "activeUser" };
-            var userSubstitution = new UserSubstitution(activeUser, substituteUser);
-            var UserSubstitutionsList = new List<UserSubstitution>();
-            UserSubstitutionsList.Add(userSubstitution);
-
-            var user = new User { Id = "superUser", Name = "New Group1", UserGroupUsers = userGroup.UserGroupUsers, UserSubstitutions = UserSubstitutionsList };
-
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserDto>(), It.IsAny<User>())).Returns(user);
-
-            ValidationResult validationResult = new ValidationResult { };
-            passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Returns(validationResult);
-
-            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(user));
-
-            SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
-
-            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
-            userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var savedUser = await userClientServiceMoq.UpdateApi(user.Id, inputUserDto, null);
-
-            Assert.NotNull(savedUser);
-            Assert.Equal(savedUser.Name, inputUserDto.Name);
-        }
-
-        [Fact]
-        public async Task CreateApiUserClientServiceParametersValidation()
-        {
-            var inputUserDto = new InputUserDto
-            {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now,
-                Active = true,
-                AuthenticationType = null,
-                Password = "teste",
-                ArcXml = ""
-            };
-
-            var outputUserDto = new OutputUserDto
-            {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
-            };
-
-            var user = new User
-            {
-                Name = "User"
-            };
-
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<InputUserDto, User>(It.IsAny<InputUserDto>())).Returns(user);
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-            settingsMoq.Setup(s => s.AuthenticationType).Returns(SettingsAuthenticationType.User);
-
-            SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
-
-            userRepositoryMoq.Setup(s => s.Create(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
-            userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var createdUser = await userClientServiceMoq.CreateApi(inputUserDto, "", null);
-
             Assert.Equal(createdUser.Name, inputUserDto.Name);
-            Assert.NotNull(createdUser.AuthenticationType);
-            Assert.NotNull(createdUser);
-        }
-
-        [Fact]
-        public async Task UpdateApiUserClientServiceParametersValidation()
-        {
-            var inputUserDto = new InputUserDto
-            {
-                Name = "UserClient",
-                PasswordExpiration = DateTime.Now,
-                ArcXml = "",
-                AuthenticationType = AuthenticationType.DatabaseUser
-            };
-
-            var outputUserDto = new OutputUserDto
-            {
-                SubstituteUsers = new string[] { "", "", "" },
-                UserGroups = new string[] { "", "", "" },
-                Name = "UserClient",
-                Login = "login",
-                PasswordExpiration = DateTime.Now
-
-            };
-            var user1 = new User { Id = "User1", Name = "New User1", UserName = "new.user1", Email = "new.user1@email.com" };
-            var userGroup1 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser1 = new UserGroupUser(userGroup1, user1);
-
-            var user2 = new User { Id = "User1", Name = "New User1", UserName = "new.user2", Email = "new.user2@email.com" };
-            var userGroup2 = new UserGroup { Id = "Group1", Name = "New Group1" };
-            var userGroupUser2 = new UserGroupUser(userGroup2, user2);
-
-            var userGroup = new UserGroup
-            {
-                Id = "User1",
-                Name = "New Group1",
-                UserGroupUsers = new UserGroupUser[] { userGroupUser1, userGroupUser2 },
-            };
-
-            var substituteUser = new User { Id = "sub" };
-            var activeUser = new User { Id = "activeUser" };
-            var userSubstitution = new UserSubstitution(activeUser, substituteUser);
-            var UserSubstitutionsList = new List<UserSubstitution>
-            {
-                userSubstitution
-            };
-
-            var user = new User { Id = "superUser", Name = "New Group1", UserGroupUsers = userGroup.UserGroupUsers, UserSubstitutions = UserSubstitutionsList };
-
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            mapperMoq.Setup(s => s.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(outputUserDto);
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserDto>(), It.IsAny<User>())).Returns(user);
-
-            ValidationResult validationResult = new ValidationResult { };
-            passwordValidatorMoq.Setup(s => s.Validate(It.IsAny<string>())).Returns(validationResult);
-
-            userRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(user));
-
-            SetMockConfigureParametersToCreateUpdate(userRepositoryMoq);
-
-            userRepositoryMoq.Setup(s => s.Update(It.IsAny<User>(), It.IsAny<string>())).ReturnsAsync(user);
-
-            userRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            var savedUser = await userClientServiceMoq.UpdateApi(user.Id, inputUserDto, null);
-
-            Assert.NotNull(savedUser);
-            Assert.Equal(savedUser.Name, inputUserDto.Name);
-        }
-
-        [Fact]
-        public void GetById_ReturnsUserWithPasswordForDatabaseAuthentication()
-        {
-            var userId = "testUserId";
-            var expectedUser = new User
-            {
-                Id = userId,
-                PasswordHash = "password",
-                AuthenticationType = AuthenticationType.DatabaseUser.ToString()
-            };
-            var expectedOutputUserDto = new OutputUserDto
-            {
-                Login = "testUser",
-                AuthenticationType = AuthenticationType.DatabaseUser
-            };
-
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            userRepositoryMoq.Setup(repo => repo.GetById(userId)).ReturnsAsync(expectedUser);
-            mapperMoq.Setup(mapper => mapper.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(expectedOutputUserDto);
-
-            var result = userClientServiceMoq.GetById(userId, out string password);
-
-            Assert.Equal("password", password);
-            Assert.Equal(AuthenticationType.DatabaseUser, result.AuthenticationType);
-            userRepositoryMoq.Verify(repo => repo.GetById(userId), Times.Once);
-            mapperMoq.Verify(mapper => mapper.Map<User, OutputUserDto>(It.IsAny<User>()), Times.Once);
-        }
-
-        [Fact]
-        public void GetById_ReturnsUserWithNoPasswordForActiveDirectoryAuthentication()
-        {
-            var userId = "testUserId";
-            var expectedUser = new User
-            {
-                Id = userId,
-                PasswordHash = "password",
-                AuthenticationType = AuthenticationType.ActiveDirectory.ToString()
-            };
-            var expectedOutputUserDto = new OutputUserDto
-            {
-                Login = "testUser",
-                AuthenticationType = AuthenticationType.ActiveDirectory
-            };
-
-            var userRepositoryMoq = new Mock<IUserRepository>();
-            var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
-            var userValidatorMoq = new Mock<IUserValidator>();
-            var passwordValidatorMoq = new Mock<IPasswordValidator>();
-            var busMoq = new Mock<IBus>();
-            var settingsMoq = new Mock<ISettings>();
-
-            var userClientServiceMoq = new UserClientService(userRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object,
-                userValidatorMoq.Object, passwordValidatorMoq.Object, busMoq.Object, settingsMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>(), Mock.Of<IArcUserXmlWriter>());
-
-            userRepositoryMoq.Setup(repo => repo.GetById(userId)).ReturnsAsync(expectedUser);
-            mapperMoq.Setup(mapper => mapper.Map<User, OutputUserDto>(It.IsAny<User>())).Returns(expectedOutputUserDto);
-
-            var result = userClientServiceMoq.GetById(userId, out string password);
-
-            Assert.Equal(string.Empty, password);
-            Assert.Equal(AuthenticationType.ActiveDirectory, result.AuthenticationType);
-            userRepositoryMoq.Verify(repo => repo.GetById(userId), Times.Once);
-            mapperMoq.Verify(mapper => mapper.Map<User, OutputUserDto>(It.IsAny<User>()), Times.Once);
+            Assert.Equal(createdUser.Login, inputUserDto.Login);
         }
     }
 }

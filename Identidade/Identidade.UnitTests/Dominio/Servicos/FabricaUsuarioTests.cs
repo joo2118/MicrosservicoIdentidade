@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using Identidade.Dominio.Fabricas;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
-using Identidade.Dominio.Servicos;
 using Identidade.Publico.Dtos;
 using NSubstitute;
 using Xunit;

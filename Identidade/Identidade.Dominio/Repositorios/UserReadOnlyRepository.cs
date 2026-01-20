@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
-using Identidade.Dominio.Modelos;
 
 namespace Identidade.Dominio.Repositorios
 {
@@ -21,16 +20,17 @@ namespace Identidade.Dominio.Repositorios
 
         public UserReadOnlyRepository(IARCDbContext arcDbContext, IUpdateConcurrencyResolver updateConcurrencyResolver)
         {
-            _arcDbContext = arcDbContext;
-            _updateConcurrencyResolver = updateConcurrencyResolver;
+            _arcDbContext = arcDbContext ?? throw new ArgumentNullException(nameof(arcDbContext));
+            _updateConcurrencyResolver = updateConcurrencyResolver ?? throw new ArgumentNullException(nameof(updateConcurrencyResolver));
         }
 
         public async Task<User> GetById(string userId)
         {
-            var user = await 
-                AddUserRelatedData(
-                    _arcDbContext.Users.Where(u => u.Id == userId))
-                .SingleOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("UserId must be provided", nameof(userId));
+
+            var user = await AddUserRelatedData(_arcDbContext.Users)
+                .SingleOrDefaultAsync(u => u.Id == userId);
 
             if (user == null)
                 throw new NotFoundAppException("user", "ID", userId);
@@ -40,10 +40,11 @@ namespace Identidade.Dominio.Repositorios
 
         public async Task<User> GetByName(string userName)
         {
-            var user = await
-                AddUserRelatedData(
-                    _arcDbContext.Users.Where(u => u.UserName == userName))
-                .SingleOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(userName))
+                throw new ArgumentException("UserName must be provided", nameof(userName));
+
+            var user = await AddUserRelatedData(_arcDbContext.Users)
+                .SingleOrDefaultAsync(u => u.UserName == userName);
 
             if (user == null)
                 throw new NotFoundAppException("user", "user name", userName);
@@ -65,7 +66,7 @@ namespace Identidade.Dominio.Repositorios
             InTransaction = false;
             if (successfulResult)
             {
-                SaveChanges().Wait();
+                SaveChanges().GetAwaiter().GetResult();
                 _arcDbContext.CommitTransaction();
             }
             else
@@ -98,8 +99,8 @@ namespace Identidade.Dominio.Repositorios
             pErro.Direction = ParameterDirection.Output;
             pErro.Size = 1024;
 
-            parameters = new List<SqlParameter>()
-            {
+            parameters =
+            [
                 new SqlParameter(Constants.cst_Prefixo, prefixo),
                 new SqlParameter(Constants.cst_Codigo, createdUserId),
                 new SqlParameter(Constants.cst_Nome, nome),
@@ -111,21 +112,23 @@ namespace Identidade.Dominio.Repositorios
                 pCodigoGerado,
                 pFoiAlterado,
                 pErro
-            };
+            ];
         }
+
         public void ConfigureParametersToRemove(out List<SqlParameter> parameters, string userId)
         {
             SqlParameter pFoiAlterado = new SqlParameter(Constants.cst_FoiAlterado, SqlDbType.Bit);
             pFoiAlterado.Direction = ParameterDirection.Output;
 
-            parameters = new List<SqlParameter>()
-            {
+            parameters =
+            [
                 new SqlParameter(Constants.cst_Id, DBNull.Value),
                 new SqlParameter(Constants.cst_Codigo, userId),
                 new SqlParameter(Constants.cst_IDClasse, DBNull.Value),
                 pFoiAlterado
-            };
+            ];
         }
+
         public bool CreateUpdateItemDirectory(string sql, List<SqlParameter> parameters)
         {
             try
@@ -160,9 +163,11 @@ namespace Identidade.Dominio.Repositorios
 
         public IARCDbContext GetContext() => _arcDbContext;
 
-        private IQueryable<User> AddUserRelatedData(IQueryable<User> users)
+        private static IQueryable<User> AddUserRelatedData(IQueryable<User> users)
         {
             return users
+                .AsNoTracking()
+                .AsSplitQuery()
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)
                 .Include(u => u.UserSubstitutions)

@@ -2,12 +2,12 @@
 using Moq;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
-using Identidade.Dominio.Servicos;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 using Identidade.Dominio.Modelos;
+using Identidade.Dominio.Repositorios;
 
 namespace Identidade.UnitTests
 {

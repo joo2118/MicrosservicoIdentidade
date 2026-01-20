@@ -1,11 +1,9 @@
-﻿using AutoMapper;
-using MassTransit;
+﻿using MassTransit;
 using Microsoft.Data.SqlClient;
 using Moq;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
-using Identidade.Dominio.Servicos;
-using Identidade.Infraestrutura.ClientServices;
+using Identidade.Infraestrutura.ServicosCliente;
 using Identidade.Infraestrutura.Helpers;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
@@ -16,267 +14,339 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using Identidade.Dominio.Servicos;
 
 namespace Identidade.UnitTests
 {
     public class UserGroupClientServiceTests
     {
         [Fact]
-        public void AddPermission()
+        public async Task AddPermission_PublishesEvent_AndReturnsDto()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
+            authorizationServiceMoq
+                .Setup(s => s.AddPermissionsIntoUserGroup(It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, int>>()))
+                .ReturnsAsync(userGroup);
 
-            authorizationServiceMoq.Setup(s => s.AddPermissionsIntoUserGroup(It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, int>>())).Returns(Task.FromResult(userGroup));
+            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group1", Name = "New Group1" };
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>()))
+                .Returns(outputUserGroupDto);
 
-            var outputUserGroupDto = new OutputUserGroupDto
-            {
-                Id = "Group1",
-                Name = "New Group1",
-            };
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
-
-            var userCreatedOrUpdatedEvent = new UserGroupCreatedOrUpdatedEvent
-            {
-                UserGroup = outputUserGroupDto,
-                RequestUserId = ""
-            };
-
-            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.FromResult(userCreatedOrUpdatedEvent));
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             var permissions = new InputPermissionDto { Id = "permission", Operations = new[] { PermissionOperation.All.ToString() } };
             var permissionList = new List<InputPermissionDto>() { permissions };
 
-            var userGroupClientServiceMoq = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
+            permissionOperationManagerMoq
+                .Setup(p => p.GetSomaOperacoes(It.IsAny<IEnumerable<string>>()))
+                .Returns(1);
 
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            var retorno = userGroupClientServiceMoq.AddPermissions(userGroup.Id, permissionList, "");
+            var retorno = await svc.AddPermissions(userGroup.Id, permissionList, "");
 
-            Assert.Equal(retorno.Result.Id, outputUserGroupDto.Id);
+            Assert.Equal(outputUserGroupDto.Id, retorno.Id);
             busMoq.Verify(v => v.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
-        public void DeletePermissions()
+        public async Task DeletePermissions_PublishesEvent_AndReturnsDto()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
+            authorizationServiceMoq
+                .Setup(s => s.DeletePermissionsFromUserGroup(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>()))
+                .ReturnsAsync(userGroup);
 
-            authorizationServiceMoq.Setup(s => s.DeletePermissionsFromUserGroup(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>())).Returns(Task.FromResult(userGroup));
+            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group1", Name = "New Group1" };
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>()))
+                .Returns(outputUserGroupDto);
 
-            var outputUserGroupDto = new OutputUserGroupDto
-            {
-                Id = "Group1",
-                Name = "New Group1",
-            };
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
-
-            var userCreatedOrUpdatedEvent = new UserGroupCreatedOrUpdatedEvent
-            {
-                UserGroup = outputUserGroupDto,
-                RequestUserId = ""
-            };
-
-            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.FromResult(userCreatedOrUpdatedEvent));
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             var permissionList = new List<string>() { "01", "02", "03" };
 
-            var userGroupClientServiceMoq = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
+            var retorno = await svc.DeletePermissions(userGroup.Id, permissionList, "");
 
-            var retorno = userGroupClientServiceMoq.DeletePermissions(userGroup.Id, permissionList, "");
-
-            Assert.Equal(retorno.Result.Id, outputUserGroupDto.Id);
+            Assert.Equal(outputUserGroupDto.Id, retorno.Id);
             busMoq.Verify(v => v.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
-        public void Create()
+        public async Task Create_CallsRepositoryAndDirectoryUpdate()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
-            var userGroup = new UserGroup {Name = "New Group",  };
+            var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
 
             var inputUserGroupDto = new InputUserGroupDto { Name = "New Group", ArcXml = "xml" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group", ArcXml = "xml" };
 
-            mapperMoq.Setup(s => s.Map<InputUserGroupDto, UserGroup>(It.IsAny<InputUserGroupDto>())).Returns(userGroup);
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
-            userGroupRepositoryMoq.Setup(s => s.Create(It.IsAny<UserGroup>())).Returns(Task.FromResult(userGroup));
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.MapearParaGrupoUsuarioAsync(It.IsAny<InputUserGroupDto>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(userGroup);
+
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>()))
+                .Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = userGroup.Name, ArcXml = inputUserGroupDto.ArcXml });
+
+            userGroupRepositoryMoq.Setup(s => s.Create(It.IsAny<UserGroup>())).ReturnsAsync(userGroup);
+            userGroupRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
             userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()));
-            userGroupRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.Create(inputUserGroupDto, "", "Group");
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            Assert.Equal(retorno.Result.Id, userGroup.Id);
-            userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny , It.IsAny<string>(), It.IsAny<DateTime>(),
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
+
+            var retorno = await svc.Create(inputUserGroupDto, "", "Group");
+
+            Assert.Equal(userGroup.Id, retorno.Id);
+            userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Once);
-
             userGroupRepositoryMoq.Verify(v => v.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Once);
         }
 
         [Fact]
-        public async Task DeleteAsync()
+        public async Task DeleteAsync_CallsDirectoryRemove()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
-            userGroupRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).Returns(Task.FromResult(true));
+            userGroupRepositoryMoq.Setup(s => s.RemoveByName(It.IsAny<string>())).ReturnsAsync("id");
             userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));
             userGroupRepositoryMoq.Setup(s => s.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupDeletedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            await userGroupClientService.Delete("", "");
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
+
+            await svc.Delete("", "");
 
             userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()), Times.Once);
             userGroupRepositoryMoq.Verify(v => v.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Once);
         }
 
         [Fact]
-        public void Get_UserGroupNameNull_GetAll()
+        public async Task Get_UserGroupNameNull_GetAll()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
 
-            IReadOnlyCollection<UserGroup> userGroupReadOnlyCollection = new List<UserGroup>(new UserGroup[] { userGroup });            
-            userGroupRepositoryMoq.Setup(s => s.GetAll()).Returns(Task.FromResult(userGroupReadOnlyCollection));
+            IReadOnlyCollection<UserGroup> userGroupReadOnlyCollection = new List<UserGroup>(new UserGroup[] { userGroup });
+            userGroupRepositoryMoq.Setup(s => s.GetAll()).ReturnsAsync(userGroupReadOnlyCollection);
 
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group" };
-            IReadOnlyCollection<OutputUserGroupDto> outputUserReadOnlyCollection = new List<OutputUserGroupDto>(new OutputUserGroupDto[] { outputUserGroupDto });
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>()))
+                .Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = userGroup.Name });
 
-            mapperMoq.Setup(s => s.Map<IReadOnlyCollection<UserGroup>, IReadOnlyCollection<OutputUserGroupDto>>(userGroupReadOnlyCollection)).Returns(outputUserReadOnlyCollection);
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.Get(null);
+            var retorno = await svc.Get(null);
 
-            Assert.Equal(userGroup.Id, retorno.Result.Select(s => s.Id).FirstOrDefault());
+            Assert.Equal(userGroup.Id, retorno.Select(s => s.Id).FirstOrDefault());
             userGroupRepositoryMoq.Verify(v => v.GetAll(), Times.Once);
         }
 
         [Fact]
-        public void Get_UserGroupNameNotNull_GetByName()
+        public async Task Get_UserGroupNameNotNull_GetByName()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group" };
 
-            userGroupRepositoryMoq.Setup(s => s.GetByName(It.IsAny<string>())).Returns(Task.FromResult(userGroup));
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
+            userGroupRepositoryMoq.Setup(s => s.GetByName(It.IsAny<string>())).ReturnsAsync(userGroup);
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>())).Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = userGroup.Name });
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.Get("New Group");
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            Assert.Equal(userGroup.Id, retorno.Result.Select(s => s.Id).FirstOrDefault());
+            var retorno = await svc.Get("New Group");
+
+            Assert.Equal(userGroup.Id, retorno.Select(s => s.Id).FirstOrDefault());
             userGroupRepositoryMoq.Verify(v => v.GetByName(It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
-        public void GetById()
+        public async Task GetById()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group" };
 
-            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(userGroup));
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
+            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(userGroup);
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>())).Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = userGroup.Name });
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.GetById("Group");
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            Assert.Equal(userGroup.Id, retorno.Result.Id);
+            var retorno = await svc.GetById("Group");
+
+            Assert.Equal(userGroup.Id, retorno.Id);
             userGroupRepositoryMoq.Verify(v => v.GetById(It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
-        public void GetPermissions()
+        public async Task GetPermissions_MapsPermissionsViaFabricaPermissao()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var permission = new Permission { Id = "permission", Name = "permissionName" };
             var userGroupPermission = new UserGroupPermission() { PermissionId = "permissionId", UserGroup = userGroup, Permission = permission };
-            var userGroupPermissionList = new List<UserGroupPermission>() { userGroupPermission };
 
-            var userGroup1 = new UserGroup { Id = "Group", Name = "New Group", UserGroupPermissions = userGroupPermissionList };
-            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(userGroup1));
+            var userGroup1 = new UserGroup { Id = "Group", Name = "New Group", UserGroupPermissions = new List<UserGroupPermission> { userGroupPermission } };
+            userGroupRepositoryMoq.Setup(s => s.GetByName(It.IsAny<string>())).ReturnsAsync(userGroup1);
 
-            var outputPermissionDto = new OutputPermissionDto() { Id = "outputPermissionDto", Name = "outputPermissionDtoName", Operations = new[] { PermissionOperation.All.ToString() }};
-            var outputPermissionDtoList = new OutputPermissionDto[] { outputPermissionDto };
+            var outputPermissionDtoList = new[] { new OutputPermissionDto { Id = "outputPermissionDto", Name = "outputPermissionDtoName" } };
+            fabricaPermissaoMoq.Setup(s => s.MapearParaDtoSaidaPermissao(It.IsAny<Permission[]>())).Returns(outputPermissionDtoList);
 
-            mapperMoq.Setup(s => s.Map<Permission[], OutputPermissionDto[]>(It.IsAny<Permission[]>())).Returns(outputPermissionDtoList);
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.GetPermissions("Group");
+            var retorno = await svc.GetPermissions("Group");
 
-            Assert.Equal("outputPermissionDto", retorno.Result.Select(s => s.Id).FirstOrDefault());
-            userGroupRepositoryMoq.Verify(v => v.GetById(It.IsAny<string>()), Times.Once);
+            Assert.Equal("outputPermissionDto", retorno.Select(s => s.Id).FirstOrDefault());
+            userGroupRepositoryMoq.Verify(v => v.GetByName(It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
-        public void Update()
+        public async Task Update_UsesFabricaGrupoUsuarioToBuildPermissions_AndDirectoryUpdate()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var userGroupUpdated = new UserGroup { Id = "Group", Name = "New Group" };
-            var inputUserGroupDto = new InputUserGroupDto { Name = "New Group", ArcXml = "xml" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group Updated" };
+            var inputUserGroupDto = new InputUserGroupDto { Name = "New Group", ArcXml = "xml", Permissions = new[] { new InputPermissionDto { Id = "p1" } } };
 
-            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(userGroup));
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserGroupDto>(), It.IsAny<UserGroup>())).Returns(userGroup);
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
+            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(userGroup);
+            fabricaGrupoUsuarioMoq
+                .Setup(s => s.ConstruirPermissoesGrupoUsuarioAsync(It.IsAny<UserGroup>(), It.IsAny<IReadOnlyCollection<InputPermissionDto>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<UserGroupPermission>());
 
-            userGroupRepositoryMoq.Setup(s => s.Update(It.IsAny<UserGroup>())).Returns(Task.FromResult(userGroupUpdated));
+            userGroupRepositoryMoq.Setup(s => s.Update(It.IsAny<UserGroup>())).ReturnsAsync(userGroupUpdated);
             userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()));
             userGroupRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.Update("Group", inputUserGroupDto, "");
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>())).Returns(new OutputUserGroupDto { Id = userGroupUpdated.Id, Name = "New Group Updated" });
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            Assert.Equal(retorno.Result.Name, outputUserGroupDto.Name);
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
+
+            var retorno = await svc.Update("Group", inputUserGroupDto, "");
+
+            Assert.Equal("New Group Updated", retorno.Name);
             userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                  It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Once);
             userGroupRepositoryMoq.Verify(v => v.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Once);
@@ -285,63 +355,70 @@ namespace Identidade.UnitTests
         }
 
         [Fact]
-        public void CreateApi()
+        public async Task CreateApi_DoesNotCallDirectoryUpdate()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
-            var userGroup = new UserGroup { Name = "New Group", };
-
+            var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
             var inputUserGroupDto = new InputUserGroupDto { Name = "New Group", ArcXml = "xml" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group", ArcXml = "xml" };
 
-            mapperMoq.Setup(s => s.Map<InputUserGroupDto, UserGroup>(It.IsAny<InputUserGroupDto>())).Returns(userGroup);
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
-            userGroupRepositoryMoq.Setup(s => s.Create(It.IsAny<UserGroup>())).Returns(Task.FromResult(userGroup));
-            userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()));
-            userGroupRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaGrupoUsuarioAsync(It.IsAny<InputUserGroupDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(userGroup);
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>())).Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = userGroup.Name });
+            userGroupRepositoryMoq.Setup(s => s.Create(It.IsAny<UserGroup>())).ReturnsAsync(userGroup);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.CreateApi(inputUserGroupDto, "", "Group");
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            Assert.Equal(retorno.Result.Id, userGroup.Id);
+            var retorno = await svc.CreateApi(inputUserGroupDto, "", "Group");
+
+            Assert.Equal(userGroup.Id, retorno.Id);
             userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Never);
-
             userGroupRepositoryMoq.Verify(v => v.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Never);
         }
 
         [Fact]
-        public void UpdateApi()
+        public async Task UpdateApi_DoesNotCallDirectoryUpdate()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
             var userGroup = new UserGroup { Id = "Group", Name = "New Group" };
-            var userGroupUpdated = new UserGroup { Id = "Group", Name = "New Group" };
             var inputUserGroupDto = new InputUserGroupDto { Name = "New Group", ArcXml = "xml" };
-            var outputUserGroupDto = new OutputUserGroupDto { Id = "Group", Name = "New Group Updated" };
 
-            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).Returns(Task.FromResult(userGroup));
-            mapperMoq.Setup(s => s.Map(It.IsAny<InputUserGroupDto>(), It.IsAny<UserGroup>())).Returns(userGroup);
-            mapperMoq.Setup(s => s.Map<UserGroup, OutputUserGroupDto>(It.IsAny<UserGroup>())).Returns(outputUserGroupDto);
+            userGroupRepositoryMoq.Setup(s => s.GetById(It.IsAny<string>())).ReturnsAsync(userGroup);
+            userGroupRepositoryMoq.Setup(s => s.Update(It.IsAny<UserGroup>())).ReturnsAsync(userGroup);
+            fabricaGrupoUsuarioMoq.Setup(s => s.MapearParaDtoSaidaGrupoUsuario(It.IsAny<UserGroup>())).Returns(new OutputUserGroupDto { Id = userGroup.Id, Name = "New Group Updated" });
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupCreatedOrUpdatedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            userGroupRepositoryMoq.Setup(s => s.Update(It.IsAny<UserGroup>())).Returns(Task.FromResult(userGroupUpdated));
-            userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()));
-            userGroupRepositoryMoq.Setup(s => s.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            var retorno = userGroupClientService.UpdateApi("Group", inputUserGroupDto, "");
+            var retorno = await svc.UpdateApi("Group", inputUserGroupDto, "");
 
-            Assert.Equal(retorno.Result.Name, outputUserGroupDto.Name);
+            Assert.Equal("New Group Updated", retorno.Name);
             userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToCreateUpdate(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>(), It.IsAny<DateTime>(),
                  It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Never);
             userGroupRepositoryMoq.Verify(v => v.CreateUpdateItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Never);
@@ -350,20 +427,28 @@ namespace Identidade.UnitTests
         }
 
         [Fact]
-        public async Task DeleteApiAsync()
+        public async Task DeleteApiAsync_DoesNotCallDirectoryRemove()
         {
             var userGroupRepositoryMoq = new Mock<IRepository<UserGroup>>();
             var authorizationServiceMoq = new Mock<IAuthorizationService>();
-            var mapperMoq = new Mock<IMapper>();
             var busMoq = new Mock<IBus>();
             var permissionOperationManagerMoq = new Mock<IPermissaoOperacaoHelper>();
+            var fabricaGrupoUsuarioMoq = new Mock<IFabricaGrupoUsuario>();
+            var fabricaPermissaoMoq = new Mock<IFabricaPermissao>();
 
-            userGroupRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).Returns(Task.FromResult(true));
-            userGroupRepositoryMoq.Setup(s => s.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()));
-            userGroupRepositoryMoq.Setup(s => s.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>())).Returns(true);
+            userGroupRepositoryMoq.Setup(s => s.Remove(It.IsAny<string>())).ReturnsAsync(true);
+            busMoq.Setup(s => s.Publish(It.IsAny<UserGroupDeletedEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var userGroupClientService = new UserGroupClientService(userGroupRepositoryMoq.Object, authorizationServiceMoq.Object, mapperMoq.Object, busMoq.Object, permissionOperationManagerMoq.Object, Mock.Of<IDatabaseConnectionUserModifier>());
-            await userGroupClientService.DeleteApi("", "");
+            var svc = new UserGroupClientService(
+                userGroupRepositoryMoq.Object,
+                authorizationServiceMoq.Object,
+                busMoq.Object,
+                permissionOperationManagerMoq.Object,
+                Mock.Of<IDatabaseConnectionUserModifier>(),
+                fabricaGrupoUsuarioMoq.Object,
+                fabricaPermissaoMoq.Object);
+
+            await svc.DeleteApi("", "");
 
             userGroupRepositoryMoq.Verify(v => v.ConfigureParametersToRemove(out It.Ref<List<SqlParameter>>.IsAny, It.IsAny<string>()), Times.Never);
             userGroupRepositoryMoq.Verify(v => v.RemoveItemDirectory(It.IsAny<string>(), It.IsAny<List<SqlParameter>>()), Times.Never);

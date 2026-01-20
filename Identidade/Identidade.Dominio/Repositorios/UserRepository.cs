@@ -3,7 +3,6 @@ using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
 using System;
-using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -26,9 +25,9 @@ namespace Identidade.Dominio.Repositorios
             IUpdateConcurrencyResolver updateConcurrencyResolver, IIdGenerator idGenerator)
             : base(arcDbContext, updateConcurrencyResolver)
         {
-            _userValidator = userValidator;
-            _passwordValidator = passwordValidator;
-            _idGenerator = idGenerator;
+            _userValidator = userValidator ?? throw new ArgumentNullException(nameof(userValidator));
+            _passwordValidator = passwordValidator ?? throw new ArgumentNullException(nameof(passwordValidator));
+            _idGenerator = idGenerator ?? throw new ArgumentNullException(nameof(idGenerator));
         }
 
         public async Task<User> Create(User user, string password)
@@ -44,17 +43,20 @@ namespace Identidade.Dominio.Repositorios
                 user.PasswordHistory = user.PasswordHash ?? string.Empty;
             }
 
-            user.CreatedAt = DateTime.UtcNow;
-            user.LastUpdatedAt = user.CreatedAt;
+            var now = DateTime.UtcNow;
+            user.CreatedAt = now;
+            user.LastUpdatedAt = now;
 
             user.Id = _idGenerator.GenerateId(Constants.cst_Usr, user.Id);
 
+            user.UserSubstitutions ??= [];
             foreach (var userSubstitution in user.UserSubstitutions)
             {
                 userSubstitution.User = user;
                 userSubstitution.UserId = user.Id;
             }
 
+            user.UserGroupUsers ??= [];
             foreach (var userGroupUser in user.UserGroupUsers)
             {
                 userGroupUser.User = user;
@@ -69,16 +71,17 @@ namespace Identidade.Dominio.Repositorios
 
         public async Task<User> Update(User user, string inputPassword)
         {
-            user.PasswordHistory = user.PasswordHistory ?? string.Empty;
-            var lastPassword = user.PasswordHistory.Split(';').Last();
-            if (!string.IsNullOrWhiteSpace(inputPassword))
+            if (user == null)
+                throw new ArgumentNullException(nameof(user));
+
+            user.PasswordHistory ??= string.Empty;
+
+            var lastPassword = user.PasswordHistory.Split(';').LastOrDefault();
+            if (!string.IsNullOrWhiteSpace(inputPassword) && string.IsNullOrWhiteSpace(lastPassword))
             {
-                if (string.IsNullOrWhiteSpace(lastPassword))
-                {
-                    user.PasswordHistory = !string.IsNullOrWhiteSpace(user.PasswordHistory)
-                        ? user.PasswordHistory + ';' + user.PasswordHash
-                        : user.PasswordHash;
-                }
+                user.PasswordHistory = !string.IsNullOrWhiteSpace(user.PasswordHistory)
+                    ? user.PasswordHistory + ';' + user.PasswordHash
+                    : user.PasswordHash;
             }
 
             user.LastUpdatedAt = DateTime.UtcNow;

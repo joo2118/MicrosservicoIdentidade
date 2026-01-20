@@ -16,15 +16,18 @@ namespace Identidade.Dominio.Repositorios
         private readonly IIdGenerator _idGenerator;
 
         public UserGroupRepository(IARCDbContext arcDbContext, IUpdateConcurrencyResolver updateConcurrencyResolver, IIdGenerator idGenerator)
-            : base (arcDbContext, updateConcurrencyResolver)
+            : base(arcDbContext, updateConcurrencyResolver)
         {
-            _updateConcurrencyResolver = updateConcurrencyResolver;
-            _idGenerator = idGenerator;
+            _updateConcurrencyResolver = updateConcurrencyResolver ?? throw new ArgumentNullException(nameof(updateConcurrencyResolver));
+            _idGenerator = idGenerator ?? throw new ArgumentNullException(nameof(idGenerator));
         }
 
         public async Task<UserGroup> Create(UserGroup userGroup)
         {
-            if (userGroup.Name == null || userGroup.Name == string.Empty)
+            if (userGroup == null)
+                throw new ArgumentNullException(nameof(userGroup));
+
+            if (string.IsNullOrWhiteSpace(userGroup.Name))
                 throw new AppException("The group name cannot be null.");
 
             userGroup.CreatedAt = DateTime.UtcNow;
@@ -43,7 +46,7 @@ namespace Identidade.Dominio.Repositorios
             foreach (var userGroupUser in userGroupUsers)
             {
                 userGroupUser.UserGroup = userGroup;
-                userGroupUser.UserId = userGroup.Id;
+                userGroupUser.UserGroupId = userGroup.Id;
             }
 
             var entityEntry = await _arcDbContext.AddAsync(userGroup);
@@ -54,6 +57,9 @@ namespace Identidade.Dominio.Repositorios
 
         public async Task<UserGroup> Update(UserGroup userGroup)
         {
+            if (userGroup == null)
+                throw new ArgumentNullException(nameof(userGroup));
+
             userGroup.LastUpdatedAt = DateTime.UtcNow;
 
             var entityEntry = _arcDbContext.UserGroups.Update(userGroup);
@@ -84,6 +90,9 @@ namespace Identidade.Dominio.Repositorios
 
         public async Task<UserGroup> GetById(string userGroupId)
         {
+            if (string.IsNullOrWhiteSpace(userGroupId))
+                throw new ArgumentException("UserGroupId must be provided", nameof(userGroupId));
+
             var userGroup = await GetAllUserGroups()
                 .SingleOrDefaultAsync(ug => ug.Id == userGroupId);
 
@@ -95,30 +104,40 @@ namespace Identidade.Dominio.Repositorios
 
         public async Task<UserGroup> GetByName(string userGroupName)
         {
-            var user = await GetAllUserGroups()
-                .SingleOrDefaultAsync(ug => ug.Name == userGroupName);
+            if (string.IsNullOrWhiteSpace(userGroupName))
+                throw new ArgumentException("UserGroupName must be provided", nameof(userGroupName));
 
-            if (user == null)
+            var normalized = userGroupName.Trim();
+
+            var userGroup = await GetAllUserGroups()
+                .SingleOrDefaultAsync(ug => ug.Name == normalized);
+
+            if (userGroup == null)
                 throw new NotFoundAppException("user group", "name", userGroupName);
 
-            return user;
+            return userGroup;
         }
 
         public async Task<IReadOnlyCollection<UserGroup>> GetAll() =>
-            await GetAllUserGroups()
-                .ToArrayAsync();
+            await GetAllUserGroups().ToArrayAsync();
 
         public async Task<UserGroup[]> GetUserGroups(string[] userGroupIds)
         {
             if (userGroupIds == null || userGroupIds.Length == 0)
                 return [];
 
-            var normalizedUserGroupIds = userGroupIds.Select(id => id.ToUpperInvariant()).ToHashSet();
-            var userGroups = await _arcDbContext.UserGroups.ToArrayAsync();
+            var normalizedUserGroupIds = userGroupIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.ToUpperInvariant())
+                .ToHashSet();
 
-            return userGroups
+            if (normalizedUserGroupIds.Count == 0)
+                return [];
+
+            return await _arcDbContext.UserGroups
+                .AsNoTracking()
                 .Where(ug => normalizedUserGroupIds.Contains(ug.Id.ToUpperInvariant()))
-                .ToArray();
+                .ToArrayAsync();
         }
 
         public async Task<User[]> GetUsers(string[] userIds)
@@ -126,26 +145,33 @@ namespace Identidade.Dominio.Repositorios
             if (userIds == null || userIds.Length == 0)
                 return [];
 
-            var normalizedUserIds = userIds.Select(id => id.ToUpperInvariant()).ToHashSet();
+            var normalizedUserIds = userIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.ToUpperInvariant())
+                .ToHashSet();
 
-            var users = await _arcDbContext.Users
+            if (normalizedUserIds.Count == 0)
+                return [];
+
+            return await _arcDbContext.Users
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Where(u => normalizedUserIds.Contains(u.Id.ToUpperInvariant()))
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)
                 .Include(u => u.UserSubstitutions)
                 .ThenInclude(usu => usu.SubstituteUser)
                 .ToArrayAsync();
-
-            return users
-                .Where(us => normalizedUserIds.Contains(us.Id.ToUpperInvariant()))
-                .ToArray();
         }
 
         private IQueryable<UserGroup> GetAllUserGroups() =>
-                AddUserGroupsRelatedData(_arcDbContext.UserGroups);
+            AddUserGroupsRelatedData(_arcDbContext.UserGroups);
 
         private IQueryable<UserGroup> AddUserGroupsRelatedData(IQueryable<UserGroup> userGroups)
         {
             return userGroups
+                .AsNoTracking()
+                .AsSplitQuery()
                 .Include(ug => ug.UserGroupPermissions)
                 .ThenInclude(ugp => ugp.Permission)
                 .Include(ug => ug.UserGroupUsers)
