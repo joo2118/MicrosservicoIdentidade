@@ -2,6 +2,7 @@
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Servicos;
+using Identidade.Dominio.Repositorios;
 
 namespace Identidade.UnitTests.Helpers
 {

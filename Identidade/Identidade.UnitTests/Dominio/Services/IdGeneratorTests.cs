@@ -8,7 +8,7 @@ namespace Identidade.UnitTests.Domain.Services
         [Fact]
         public void GenerateId_WithSuggestedIdStartingWithPrefix_ReturnsSuggestedId()
         {
-            var idGenerator = new IdGenerator();
+            var idGenerator = new IdGeneratorService();
             var prefix = "USR";
             var suggestedId = "USR_12345";
 
@@ -20,7 +20,7 @@ namespace Identidade.UnitTests.Domain.Services
         [Fact]
         public void GenerateId_WithSuggestedIdNotStartingWithPrefix_ReturnsGeneratedId()
         {
-            var idGenerator = new IdGenerator();
+            var idGenerator = new IdGeneratorService();
             var prefix = "USR";
             var suggestedId = "12345";
 
@@ -33,7 +33,7 @@ namespace Identidade.UnitTests.Domain.Services
         [Fact]
         public void GenerateId_WithNullSuggestedId_ReturnsGeneratedId()
         {
-            var idGenerator = new IdGenerator();
+            var idGenerator = new IdGeneratorService();
             var prefix = "USR";
 
             var result = idGenerator.GenerateId(prefix);

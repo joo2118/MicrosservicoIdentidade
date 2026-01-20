@@ -7,7 +7,7 @@ namespace Identidade.Dominio.Servicos
         string GenerateId(string prefix, string suggestedId = null);
     }
 
-    public class IdGenerator : IIdGenerator
+    public class IdGeneratorService : IIdGenerator
     {
         public string GenerateId(string prefix, string suggestedId = null) =>
             (suggestedId?.StartsWith(prefix) ?? false)

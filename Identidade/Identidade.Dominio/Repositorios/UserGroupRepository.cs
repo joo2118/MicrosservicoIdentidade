@@ -6,8 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Identidade.Dominio.Servicos;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Repositorios
 {
     public class UserGroupRepository : UserReadOnlyRepository, IRepository<UserGroup>, IUserGroupRepository
     {

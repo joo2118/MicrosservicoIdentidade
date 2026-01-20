@@ -21,6 +21,7 @@ using Xunit;
 using ValidationResult = FluentValidation.Results.ValidationResult;
 using Identidade.Infraestrutura.Configuracoes;
 using Identidade.Infraestrutura.ServicosCliente;
+using Identidade.Dominio.Repositorios;
 
 namespace Identidade.UnitTests.Infraestrutura.ServicosCliente
 {

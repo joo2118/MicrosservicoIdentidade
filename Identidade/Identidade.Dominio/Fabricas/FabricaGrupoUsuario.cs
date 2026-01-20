@@ -8,7 +8,7 @@ using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Publico.Dtos;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Fabricas
 {
     public sealed class FabricaGrupoUsuario : IFabricaGrupoUsuario
     {
@@ -106,7 +106,7 @@ namespace Identidade.Dominio.Servicos
                 }
                 catch (NotFoundAppException)
                 {
-                    return (id, permission: (Permission)null);
+                    return (id, permission: null);
                 }
             });
 

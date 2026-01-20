@@ -5,7 +5,7 @@ using Identidade.Dominio.Modelos;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Fabricas
 {
     public sealed class FabricaPermissao : IFabricaPermissao
     {

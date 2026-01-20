@@ -1,6 +1,7 @@
 ﻿using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
+using Identidade.Dominio.Repositorios;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;

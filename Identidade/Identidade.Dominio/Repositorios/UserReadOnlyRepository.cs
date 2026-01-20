@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Identidade.Dominio.Modelos;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Repositorios
 {
     public class UserReadOnlyRepository : IReadOnlyRepository<User>
     {

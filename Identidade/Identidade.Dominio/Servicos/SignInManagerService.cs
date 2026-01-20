@@ -1,4 +1,5 @@
 ﻿using Identidade.Dominio.Interfaces;
+using Identidade.Dominio.Repositorios;
 using System;
 using System.Threading.Tasks;
 
@@ -10,12 +11,12 @@ namespace Identidade.Dominio.Servicos
         Task LogOut();
     }
 
-    public class SignInManager : ISignInManager
+    public class SignInManagerService : ISignInManager
     {
         private readonly IUserRepository _userRepository;
         private readonly ILogInService _logInService;
 
-        public SignInManager(IUserRepository userRepository, ILogInService logInService)
+        public SignInManagerService(IUserRepository userRepository, ILogInService logInService)
         {
             _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
             _logInService = logInService ?? throw new ArgumentNullException(nameof(logInService));

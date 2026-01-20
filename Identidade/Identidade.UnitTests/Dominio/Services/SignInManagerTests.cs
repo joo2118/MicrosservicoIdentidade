@@ -5,6 +5,7 @@ using Identidade.Dominio.Interfaces;
 using System.Threading.Tasks;
 using Identidade.Dominio.Modelos;
 using System;
+using Identidade.Dominio.Repositorios;
 
 namespace Identidade.UnitTests.Dominio.Services
 {
@@ -25,11 +26,11 @@ namespace Identidade.UnitTests.Dominio.Services
             if (shouldThrow)
             {
                 Assert.Throws<ArgumentNullException>(() =>
-                    new SignInManager(userRepository, logInService));
+                    new SignInManagerService(userRepository, logInService));
             }
             else
             {
-                var manager = new SignInManager(userRepository, logInService);
+                var manager = new SignInManagerService(userRepository, logInService);
                 Assert.NotNull(manager);
             }
         }
@@ -43,7 +44,7 @@ namespace Identidade.UnitTests.Dominio.Services
 
             userRepository.GetByName("testuser").Returns(Task.FromResult(user));
 
-            var manager = new SignInManager(userRepository, logInService);
+            var manager = new SignInManagerService(userRepository, logInService);
 
             var result = await manager.LogIn("testuser", "password");
 
@@ -58,7 +59,7 @@ namespace Identidade.UnitTests.Dominio.Services
             var userRepository = Substitute.For<IUserRepository>();
             var logInService = Substitute.For<ILogInService>();
 
-            var manager = new SignInManager(userRepository, logInService);
+            var manager = new SignInManagerService(userRepository, logInService);
 
             await manager.LogOut();
 

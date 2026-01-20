@@ -5,7 +5,7 @@ using Identidade.Dominio.Modelos;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Repositorios
 {
     public class PermissionRepository : UserReadOnlyRepository, IReadOnlyRepository<Permission>
     {

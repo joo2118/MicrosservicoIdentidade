@@ -1,12 +1,13 @@
 ﻿using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
+using Identidade.Dominio.Servicos;
 using System;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Identidade.Dominio.Servicos
+namespace Identidade.Dominio.Repositorios
 {
     public interface IUserRepository : IReadOnlyRepository<User>
     {

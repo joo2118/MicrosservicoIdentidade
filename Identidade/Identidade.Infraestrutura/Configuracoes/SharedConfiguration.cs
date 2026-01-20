@@ -1,9 +1,11 @@
 ﻿using Elastic.Ingest.Elasticsearch;
 using Elastic.Serilog.Sinks;
 using Identidade.Dominio.Escritores;
+using Identidade.Dominio.Fabricas;
 using Identidade.Dominio.Helpers;
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
+using Identidade.Dominio.Repositorios;
 using Identidade.Dominio.Servicos;
 using Identidade.Infraestrutura.Adaptadores;
 using Identidade.Infraestrutura.ClientServices;
@@ -80,14 +82,14 @@ namespace Identidade.Infraestrutura.Configuracoes
             services.AddScoped<IARCDbContext, ARCDbContext>()
                     .AddTransient<IReadOnlyRepository<User>, UserReadOnlyRepository>()
                     .AddTransient<IUserRepository, UserRepository>()
-                    .AddTransient<ISignInManager, SignInManager>()
+                    .AddTransient<ISignInManager, SignInManagerService>()
                     .AddTransient<ILogInService, EFLoginService>()
                     .AddTransient<IUserValidator, UserValidator>()
                     .AddTransient<IPasswordValidator, PasswordValidator>()
                     .AddTransient<IReadOnlyRepository<Permission>, PermissionRepository>()
                     .AddTransient<IUpdateConcurrencyResolver, UpdateConcurrencyResolver>()
                     .AddTransient<IAuthorizationService, AuthorizationService>()
-                    .AddTransient<IIdGenerator, IdGenerator>()
+                    .AddTransient<IIdGenerator, IdGeneratorService>()
                     .AddTransient<IPermissaoOperacaoHelper, PermissaoOperacaoHelper>()
                     .AddTransient<IFabricaGrupoUsuario, FabricaGrupoUsuario>()
                     .AddTransient<IFabricaUsuario, FabricaUsuario>()

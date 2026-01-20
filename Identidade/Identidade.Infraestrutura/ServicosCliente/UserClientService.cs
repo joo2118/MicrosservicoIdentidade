@@ -16,6 +16,7 @@ using Identidade.Publico.Dtos;
 using Identidade.Publico.Enumerations;
 using Identidade.Publico.Events;
 using Identidade.Infraestrutura.Configuracoes;
+using Identidade.Dominio.Repositorios;
 
 namespace Identidade.Infraestrutura.ServicosCliente
 {
