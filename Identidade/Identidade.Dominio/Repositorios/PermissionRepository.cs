@@ -14,7 +14,7 @@ namespace Identidade.Dominio.Repositorios
         public PermissionRepository(IARCDbContext arcDbContext, IUpdateConcurrencyResolver updateConcurrencyResolver)
             : base(arcDbContext, updateConcurrencyResolver) { }
 
-        public async Task<Permission> GetById(string permissionId)
+        public new async Task<Permission> GetById(string permissionId)
         {
             if (string.IsNullOrWhiteSpace(permissionId))
                 throw new ArgumentException("PermissionId must be provided", nameof(permissionId));
@@ -28,7 +28,7 @@ namespace Identidade.Dominio.Repositorios
             return permission;
         }
 
-        public async Task<Permission> GetByName(string permissionName)
+        public new async Task<Permission> GetByName(string permissionName)
         {
             if (string.IsNullOrWhiteSpace(permissionName))
                 throw new ArgumentException("PermissionName must be provided", nameof(permissionName));
@@ -44,8 +44,23 @@ namespace Identidade.Dominio.Repositorios
             return permission;
         }
 
-        public async Task<IReadOnlyCollection<Permission>> GetAll() =>
+        public new async Task<IReadOnlyCollection<Permission>> GetAll() =>
             await QueryWithRelatedData().ToArrayAsync();
+
+        public new async Task<IReadOnlyCollection<Permission>> GetAll(int? page, int? pageSize)
+        {
+            if (!page.HasValue && !pageSize.HasValue)
+                return await GetAll();
+
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            return await QueryWithRelatedData()
+                .Skip(pagination.Skip)
+                .Take(pagination.TamanhoPagina)
+                .ToArrayAsync();
+        }
+
+        Task<IReadOnlyCollection<Permission>> IReadOnlyRepository<Permission>.GetAll(int? page, int? pageSize) =>
+            GetAll(page, pageSize);
 
         private IQueryable<Permission> QueryWithRelatedData()
         {

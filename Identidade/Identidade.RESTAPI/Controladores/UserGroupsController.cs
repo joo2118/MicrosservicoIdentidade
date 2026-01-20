@@ -11,6 +11,7 @@ using Microsoft.ApplicationInsights;
 using Serilog;
 using Identidade.RESTAPI.Controladores;
 using Identidade.Infraestrutura.ServicosCliente;
+using Identidade.RESTAPI.Helpers;
 
 namespace Identidade.RESTAPI.Controllers
 {
@@ -161,20 +162,64 @@ namespace Identidade.RESTAPI.Controllers
         [HttpGet]
         [ProducesResponseType(typeof(IReadOnlyCollection<OutputUserGroupDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
-        public async Task<IActionResult> Get([FromQuery] string userGroupName)
+        public async Task<IActionResult> Get([FromQuery] string userGroupName, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
-                    var userGroupDto = await _userGroupService.Get(userGroupName);
-                    return Ok(userGroupDto);
+                    var userGroupDto = await _userGroupService.Get(userGroupName, page, pageSize);
+                    var projected = ProjectionHelper.ApplyProjection(userGroupDto, projection);
+                    return Ok(projected);
                 }
                 catch (NotFoundAppException e)
                 {
                     return NotFound(e.Errors);
                 }
-            }, "GetUserGroups", new Dictionary<string, string> { { "UserGroupNameFilter", userGroupName } });
+            }, "GetUserGroups", new Dictionary<string, string>
+            {
+                { "UserGroupNameFilter", userGroupName },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
+        }
+
+        /// <summary>
+        /// Gets user groups with a paginated result envelope (includes total count).
+        /// This endpoint is added for performance comparison; existing GET endpoints remain unchanged.
+        /// </summary>
+        [HttpGet("paginado")]
+        [ProducesResponseType(typeof(ResultadoPaginado<OutputUserGroupDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> GetPaginado([FromQuery] string userGroupName, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                try
+                {
+                    var result = await _userGroupService.GetPaginado(userGroupName, page, pageSize);
+                    var projectedItems = ProjectionHelper.ApplyProjection(result.Items, projection);
+
+                    return Ok(new ResultadoPaginado<object>
+                    {
+                        Items = projectedItems,
+                        Pagina = result.Pagina,
+                        TamanhoPagina = result.TamanhoPagina,
+                        Total = result.Total
+                    });
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserGroupsPaginado", new Dictionary<string, string>
+            {
+                { "UserGroupNameFilter", userGroupName },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
         }
 
         /// <summary>
@@ -184,20 +229,64 @@ namespace Identidade.RESTAPI.Controllers
         [HttpGet("{userGroupName}/permissions")]
         [ProducesResponseType(typeof(IReadOnlyCollection<OutputPermissionDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
-        public async Task<IActionResult> GetPermissions(string userGroupName)
+        public async Task<IActionResult> GetPermissions(string userGroupName, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
-                    var permissionsDto = await _userGroupService.GetPermissions(userGroupName);
-                    return Ok(permissionsDto);
+                    var permissionsDto = await _userGroupService.GetPermissions(userGroupName, page, pageSize);
+                    var projected = ProjectionHelper.ApplyProjection(permissionsDto, projection);
+                    return Ok(projected);
                 }
                 catch (NotFoundAppException e)
                 {
                     return NotFound(e.Errors);
                 }
-            }, "GetUserGroupPermissions", new Dictionary<string, string> { { "UserGroupName", userGroupName } });
+            }, "GetUserGroupPermissions", new Dictionary<string, string>
+            {
+                { "UserGroupName", userGroupName },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
+        }
+
+        /// <summary>
+        /// Gets all the permissions of an user group with a paginated result envelope (includes total count).
+        /// This endpoint is added for performance comparison; existing GET endpoints remain unchanged.
+        /// </summary>
+        [HttpGet("{userGroupName}/permissions/paginado")]
+        [ProducesResponseType(typeof(ResultadoPaginado<OutputPermissionDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> GetPermissionsPaginado(string userGroupName, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                try
+                {
+                    var result = await _userGroupService.GetPermissionsPaginado(userGroupName, page, pageSize);
+                    var projectedItems = ProjectionHelper.ApplyProjection(result.Items, projection);
+
+                    return Ok(new ResultadoPaginado<object>
+                    {
+                        Items = projectedItems,
+                        Pagina = result.Pagina,
+                        TamanhoPagina = result.TamanhoPagina,
+                        Total = result.Total
+                    });
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUserGroupPermissionsPaginado", new Dictionary<string, string>
+            {
+                { "UserGroupName", userGroupName },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
         }
 
         /// <summary>

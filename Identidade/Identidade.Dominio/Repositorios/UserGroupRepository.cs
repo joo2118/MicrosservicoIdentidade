@@ -88,7 +88,7 @@ namespace Identidade.Dominio.Repositorios
             return userGroup.Id;
         }
 
-        public async Task<UserGroup> GetById(string userGroupId)
+        public new async Task<UserGroup> GetById(string userGroupId)
         {
             if (string.IsNullOrWhiteSpace(userGroupId))
                 throw new ArgumentException("UserGroupId must be provided", nameof(userGroupId));
@@ -102,7 +102,7 @@ namespace Identidade.Dominio.Repositorios
             return userGroup;
         }
 
-        public async Task<UserGroup> GetByName(string userGroupName)
+        public new async Task<UserGroup> GetByName(string userGroupName)
         {
             if (string.IsNullOrWhiteSpace(userGroupName))
                 throw new ArgumentException("UserGroupName must be provided", nameof(userGroupName));
@@ -118,8 +118,23 @@ namespace Identidade.Dominio.Repositorios
             return userGroup;
         }
 
-        public async Task<IReadOnlyCollection<UserGroup>> GetAll() =>
+        public new async Task<IReadOnlyCollection<UserGroup>> GetAll() =>
             await GetAllUserGroups().ToArrayAsync();
+
+        Task<IReadOnlyCollection<UserGroup>> IReadOnlyRepository<UserGroup>.GetAll(int? page, int? pageSize) =>
+            GetAll(page, pageSize);
+
+        public new async Task<IReadOnlyCollection<UserGroup>> GetAll(int? page, int? pageSize)
+        {
+            if (!page.HasValue && !pageSize.HasValue)
+                return await GetAll();
+
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            return await GetAllUserGroups()
+                .Skip(pagination.Skip)
+                .Take(pagination.TamanhoPagina)
+                .ToArrayAsync();
+        }
 
         public async Task<UserGroup[]> GetUserGroups(string[] userGroupIds)
         {

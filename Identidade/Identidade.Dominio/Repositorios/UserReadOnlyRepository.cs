@@ -55,6 +55,21 @@ namespace Identidade.Dominio.Repositorios
         public async Task<IReadOnlyCollection<User>> GetAll() =>
             await AddUserRelatedData(_arcDbContext.Users).ToArrayAsync();
 
+        Task<IReadOnlyCollection<User>> IReadOnlyRepository<User>.GetAll(int? page, int? pageSize) =>
+            GetAll(page, pageSize);
+
+        public async Task<IReadOnlyCollection<User>> GetAll(int? page, int? pageSize)
+        {
+            if (!page.HasValue && !pageSize.HasValue)
+                return await GetAll();
+
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            return await AddUserRelatedData(_arcDbContext.Users)
+                .Skip(pagination.Skip)
+                .Take(pagination.TamanhoPagina)
+                .ToArrayAsync();
+        }
+
         public void BeginTransaction()
         {
             _arcDbContext.BeginTransaction();

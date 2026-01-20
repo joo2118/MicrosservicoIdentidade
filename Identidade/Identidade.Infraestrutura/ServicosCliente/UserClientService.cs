@@ -31,12 +31,16 @@ namespace Identidade.Infraestrutura.ServicosCliente
         Task Delete(string userId, string requestUserId);
         Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId);
         Task<IReadOnlyCollection<OutputUserDto>> Get(string login);
+        Task<IReadOnlyCollection<OutputUserDto>> Get(string login, int? page, int? pageSize);
         Task<OutputUserDto> GetById(string userId);
         OutputUserDto GetById(string userId, out string password);
         Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId);
+        Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId, int? page, int? pageSize);
         Task<OutputUserDto> Update(string userId, InputUserDto inputUserDto, string requestUserId);
         Task<OutputUserDto> Update(string userId, ArcUserDto arcUserDto, string requestUserId);
         Task<OutputUserDto> UpdateApi(string userId, InputUserDto inputUserDto, string requestUserId);
+        Task<ResultadoPaginado<OutputUserDto>> GetPaginado(string login, int? page, int? pageSize);
+        Task<ResultadoPaginado<OutputUserGroupDto>> GetUserGroupsPaginado(string userId, int? page, int? pageSize);
     }
 
     public class UserClientService : IUserClientService
@@ -213,12 +217,15 @@ namespace Identidade.Infraestrutura.ServicosCliente
         }
 
         public Task<IReadOnlyCollection<OutputUserDto>> Get(string login) =>
-            ExecuteResilientAsync(() => GetCore(login));
+            Get(login, page: null, pageSize: null);
 
-        private async Task<IReadOnlyCollection<OutputUserDto>> GetCore(string login)
+        public Task<IReadOnlyCollection<OutputUserDto>> Get(string login, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetCore(login, page, pageSize));
+
+        private async Task<IReadOnlyCollection<OutputUserDto>> GetCore(string login, int? page, int? pageSize)
         {
             if (login == null)
-                return await GetAll();
+                return await GetAll(page, pageSize);
 
             return await GetByLogin(login);
         }
@@ -247,14 +254,25 @@ namespace Identidade.Infraestrutura.ServicosCliente
         }
 
         public Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId) =>
-            ExecuteResilientAsync(() => GetUserGroupsCore(userId));
+            GetUserGroups(userId, page: null, pageSize: null);
 
-        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroupsCore(string userId)
+        public Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetUserGroupsCore(userId, page, pageSize));
+
+        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroupsCore(string userId, int? page, int? pageSize)
         {
             var user = await _userRepository.GetById(userId);
-            var userGroups = user.UserGroupUsers.Select(ugu => ugu.UserGroup).ToArray();
+            var userGroups = user.UserGroupUsers.Select(ugu => ugu.UserGroup).AsQueryable();
 
-            return userGroups.Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt }).ToArray();
+            if (page.HasValue || pageSize.HasValue)
+            {
+                var pagination = new OpcoesPaginacao(page, pageSize);
+                userGroups = userGroups.Skip(pagination.Skip).Take(pagination.TamanhoPagina);
+            }
+
+            return userGroups
+                .Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt })
+                .ToArray();
         }
 
         public Task<OutputUserDto> Update(string userId, InputUserDto inputUserDto, string requestUserId) =>
@@ -369,12 +387,57 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return await PublishUserCreatedOrUpdated(savedUser, inputUserDto.Password, requestUserId);
         }
 
+        public Task<ResultadoPaginado<OutputUserDto>> GetPaginado(string login, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetPaginadoCore(login, page, pageSize));
+
+        private async Task<ResultadoPaginado<OutputUserDto>> GetPaginadoCore(string login, int? page, int? pageSize)
+        {
+            if (login == null)
+                return await GetAllPaginado(page, pageSize);
+
+            var items = await GetByLogin(login);
+            return new ResultadoPaginado<OutputUserDto>
+            {
+                Items = items,
+                Pagina = 1,
+                TamanhoPagina = items.Count,
+                Total = items.Count
+            };
+        }
+
+        public Task<ResultadoPaginado<OutputUserGroupDto>> GetUserGroupsPaginado(string userId, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetUserGroupsPaginadoCore(userId, page, pageSize));
+
+        private async Task<ResultadoPaginado<OutputUserGroupDto>> GetUserGroupsPaginadoCore(string userId, int? page, int? pageSize)
+        {
+            var user = await _userRepository.GetById(userId);
+            var userGroups = user.UserGroupUsers.Select(ugu => ugu.UserGroup).AsQueryable();
+
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            var result = await userGroups
+                .Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt })
+                .ParaResultadoPaginado(pagination);
+
+            return result;
+        }
+
+        private async Task<ResultadoPaginado<OutputUserDto>> GetAllPaginado(int? page, int? pageSize)
+        {
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            var usersQuery = (await _userRepository.GetAll()).AsQueryable();
+
+            var result = await usersQuery
+                .Select(u => _fabricaUsuario.MapearParaDtoSaidaUsuario(u))
+                .ParaResultadoPaginado(pagination);
+
+            return result;
+        }
+
         private CreateUpdateResult CreateUpdateUserARC(UserBaseDto newUserDto, string userArcXml, User createdUser)
         {
             _userRepository.ConfigureParametersToCreateUpdate(out var parameters, newUserDto.Login, newUserDto.PasswordExpiration.Value.DateTime, createdUser.Id, userArcXml, Constants.cst_Usuario, Constants.cst_Usr);
             _ = _userRepository.CreateUpdateItemDirectory(Constants.cst_SpAtualizaItemDiretorio, parameters);
-            var createUpdateResult = CreateUpdateResult.FromParameters(parameters);
-            return createUpdateResult;
+            return CreateUpdateResult.FromParameters(parameters);
         }
 
         private async Task<IReadOnlyCollection<OutputUserDto>> GetByLogin(string login)
@@ -385,9 +448,9 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return new[] { userDto };
         }
 
-        private async Task<IReadOnlyCollection<OutputUserDto>> GetAll()
+        private async Task<IReadOnlyCollection<OutputUserDto>> GetAll(int? page, int? pageSize)
         {
-            var users = await _userRepository.GetAll();
+            var users = await _userRepository.GetAll(page, pageSize);
             var dtos = users.Select(u => _fabricaUsuario.MapearParaDtoSaidaUsuario(u)).ToArray();
             return dtos;
         }

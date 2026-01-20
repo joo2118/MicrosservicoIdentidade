@@ -3,6 +3,7 @@ using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -103,5 +104,11 @@ namespace Identidade.Dominio.Repositorios
 
             return result != 0;
         }
+
+        public Task<IReadOnlyCollection<User>> GetAll(int? page, int? pageSize) =>
+            base.GetAll(page, pageSize);
+
+        Task<IReadOnlyCollection<User>> IReadOnlyRepository<User>.GetAll(int? page, int? pageSize) =>
+            GetAll(page, pageSize);
     }
 }

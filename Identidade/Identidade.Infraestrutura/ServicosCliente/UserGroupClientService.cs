@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Identidade.Dominio.Helpers;
 
 namespace Identidade.Infraestrutura.ServicosCliente
 {
@@ -24,11 +25,15 @@ namespace Identidade.Infraestrutura.ServicosCliente
         Task DeleteApi(string userGroupId, string requestUserId);
         Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId);
         Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName);
+        Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName, int? page, int? pageSize);
         Task<OutputUserGroupDto> GetById(string userGroupId);
         Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName);
+        Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName, int? page, int? pageSize);
         Task<OutputUserGroupDto> Update(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId);
         Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId);
         Task<OutputUserGroupDto> UpdateApi(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId);
+        Task<ResultadoPaginado<OutputUserGroupDto>> GetPaginado(string userGroupName, int? page, int? pageSize);
+        Task<ResultadoPaginado<OutputPermissionDto>> GetPermissionsPaginado(string userGroupName, int? page, int? pageSize);
     }
 
     public class UserGroupClientService : IUserGroupClientService
@@ -160,12 +165,15 @@ namespace Identidade.Infraestrutura.ServicosCliente
         }
 
         public Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName) =>
-            ExecuteResilientAsync(() => GetCore(userGroupName));
+            Get(userGroupName, page: null, pageSize: null);
 
-        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetCore(string userGroupName)
+        public Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetCore(userGroupName, page, pageSize));
+
+        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetCore(string userGroupName, int? page, int? pageSize)
         {
             if (userGroupName == null)
-                return await GetAll();
+                return await GetAll(page, pageSize);
 
             return await GetByName(userGroupName);
         }
@@ -180,14 +188,23 @@ namespace Identidade.Infraestrutura.ServicosCliente
         }
 
         public Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName) =>
-            ExecuteResilientAsync(() => GetPermissionsCore(userGroupName));
+            GetPermissions(userGroupName, page: null, pageSize: null);
 
-        private async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissionsCore(string userGroupName)
+        public Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetPermissionsCore(userGroupName, page, pageSize));
+
+        private async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissionsCore(string userGroupName, int? page, int? pageSize)
         {
             var userGroup = await _userGroupRepository.GetByName(userGroupName);
-            var permissions = userGroup.UserGroupPermissions.Select(ugp => ugp.Permission).ToArray();
-            var permissionsDto = _fabricaPermissao.MapearParaDtoSaidaPermissao(permissions);
+            var permissions = userGroup.UserGroupPermissions.Select(ugp => ugp.Permission).AsQueryable();
 
+            if (page.HasValue || pageSize.HasValue)
+            {
+                var pagination = new OpcoesPaginacao(page, pageSize);
+                permissions = permissions.Skip(pagination.Skip).Take(pagination.TamanhoPagina);
+            }
+
+            var permissionsDto = _fabricaPermissao.MapearParaDtoSaidaPermissao(permissions.ToArray());
             return permissionsDto;
         }
 
@@ -258,9 +275,55 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(savedUserGroup);
         }
 
-        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetAll()
+        public Task<ResultadoPaginado<OutputUserGroupDto>> GetPaginado(string userGroupName, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetPaginadoCore(userGroupName, page, pageSize));
+
+        private async Task<ResultadoPaginado<OutputUserGroupDto>> GetPaginadoCore(string userGroupName, int? page, int? pageSize)
         {
-            var userGroups = await _userGroupRepository.GetAll();
+            if (userGroupName == null)
+                return await GetAllPaginado(page, pageSize);
+
+            var items = await GetByName(userGroupName);
+            return new ResultadoPaginado<OutputUserGroupDto>
+            {
+                Items = items,
+                Pagina = 1,
+                TamanhoPagina = items.Count,
+                Total = items.Count
+            };
+        }
+
+        public Task<ResultadoPaginado<OutputPermissionDto>> GetPermissionsPaginado(string userGroupName, int? page, int? pageSize) =>
+            ExecuteResilientAsync(() => GetPermissionsPaginadoCore(userGroupName, page, pageSize));
+
+        private async Task<ResultadoPaginado<OutputPermissionDto>> GetPermissionsPaginadoCore(string userGroupName, int? page, int? pageSize)
+        {
+            var userGroup = await _userGroupRepository.GetByName(userGroupName);
+            var permissions = userGroup.UserGroupPermissions.Select(ugp => ugp.Permission).AsQueryable();
+
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            var result = await permissions
+                .Select(p => _fabricaPermissao.MapearParaDtoSaidaPermissao(p))
+                .ParaResultadoPaginado(pagination);
+
+            return result;
+        }
+
+        private async Task<ResultadoPaginado<OutputUserGroupDto>> GetAllPaginado(int? page, int? pageSize)
+        {
+            var pagination = new OpcoesPaginacao(page, pageSize);
+            var groupsQuery = (await _userGroupRepository.GetAll()).AsQueryable();
+
+            var result = await groupsQuery
+                .Select(g => _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(g))
+                .ParaResultadoPaginado(pagination);
+
+            return result;
+        }
+
+        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetAll(int? page, int? pageSize)
+        {
+            var userGroups = await _userGroupRepository.GetAll(page, pageSize);
             return userGroups.Select(_fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario).ToArray();
         }
 

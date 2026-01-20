@@ -11,9 +11,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Identidade.Consumidor.Tests
+namespace Identidade.UnitTests.Consumidores
 {
-    public class BaseConsumerTests
+    public class ConsumidorBaseTests
     {
         [Fact]
         public async Task Consume_MessageAlreadyConsumed_DoesNotConsumeContext()

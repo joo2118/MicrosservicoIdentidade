@@ -12,6 +12,7 @@ using Serilog;
 using Microsoft.ApplicationInsights;
 using Identidade.Infraestrutura.ServicosCliente;
 using Identidade.Dominio.Extensoes;
+using Identidade.RESTAPI.Helpers;
 
 namespace Identidade.RESTAPI.Controladores
 {
@@ -92,14 +93,15 @@ namespace Identidade.RESTAPI.Controladores
                 {
                     var credentials = _credentialsFactory.Create(authorization, requestUser);
                     await _userService.Delete(userId, credentials.UserLogin);
-                    
+
                     return NoContent();
                 }
                 catch (NotFoundAppException e)
                 {
                     return NotFound(e.Errors);
                 }
-            }, "DeleteUser", new Dictionary<string, string> { { "UserId", userId } });
+            }
+           , "DeleteUser", new Dictionary<string, string> { { "UserId", userId } });
         }
 
         /// <summary>
@@ -231,20 +233,69 @@ namespace Identidade.RESTAPI.Controladores
         [HttpGet]
         [ProducesResponseType(typeof(IReadOnlyCollection<OutputUserDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
-        public async Task<IActionResult> Get([FromQuery] string login)
+        public async Task<IActionResult> Get([FromQuery] string login, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
-                    var userDtos = await _userService.Get(login);
-                    return Ok(userDtos);
+                    var userDtos = await _userService.Get(login, page, pageSize);
+                    var projected = ProjectionHelper.ApplyProjection(userDtos, projection);
+                    return Ok(projected);
                 }
                 catch (NotFoundAppException e)
                 {
                     return NotFound(e.Errors);
                 }
-            }, "GetUsers", new Dictionary<string, string> { { "LoginFilter", login } });
+            }, "GetUsers", new Dictionary<string, string>
+            {
+                { "LoginFilter", login },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
+        }
+
+        /// <summary>
+        /// Gets all the users from database, allowing filter by login.
+        /// </summary>
+        /// <param name="login"> The login of the user to be requested. </param>
+        /// <remarks> Remarks:
+        /// <br />
+        /// <para> If the name is informed on the query, an array with a single user is returned. </para>
+        /// <br />
+        /// <para> On the response, the password is never visible. </para></remarks>
+        [HttpGet("paginado")]
+        [ProducesResponseType(typeof(ResultadoPaginado<OutputUserDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> GetPaginado([FromQuery] string login, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                try
+                {
+                    var result = await _userService.GetPaginado(login, page, pageSize);
+                    var projectedItems = ProjectionHelper.ApplyProjection(result.Items, projection);
+
+                    return Ok(new ResultadoPaginado<object>
+                    {
+                        Items = projectedItems,
+                        Pagina = result.Pagina,
+                        TamanhoPagina = result.TamanhoPagina,
+                        Total = result.Total
+                    });
+                }
+                catch (NotFoundAppException e)
+                {
+                    return NotFound(e.Errors);
+                }
+            }, "GetUsersPaginado", new Dictionary<string, string>
+            {
+                { "LoginFilter", login },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
         }
 
         /// <summary>
@@ -254,20 +305,64 @@ namespace Identidade.RESTAPI.Controladores
         [HttpGet("{userId}/groups")]
         [ProducesResponseType(typeof(IReadOnlyCollection<OutputUserGroupDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> GetUserGroups(string userId)
+        public async Task<IActionResult> GetUserGroups(string userId, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
         {
             return await ExecuteAsync(async () =>
             {
                 try
                 {
-                    var userGroupDtos = await _userService.GetUserGroups(userId);
-                    return Ok(userGroupDtos);
+                    var userGroupDtos = await _userService.GetUserGroups(userId, page, pageSize);
+                    var projected = ProjectionHelper.ApplyProjection(userGroupDtos, projection);
+                    return Ok(projected);
                 }
                 catch (AppException e)
                 {
                     return BadRequest(e.Errors);
                 }
-            }, "GetUserGroups", new Dictionary<string, string> { { "UserId", userId } });
+            }, "GetUserGroups", new Dictionary<string, string>
+            {
+                { "UserId", userId },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
+        }
+
+        /// <summary>
+        /// Gets user groups for an user with a paginated result envelope (includes total count).
+        /// This endpoint is added for performance comparison; existing GET endpoints remain unchanged.
+        /// </summary>
+        [HttpGet("{userId}/groups/paginado")]
+        [ProducesResponseType(typeof(ResultadoPaginado<OutputUserGroupDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(IReadOnlyCollection<string>), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> GetUserGroupsPaginado(string userId, [FromQuery] int? page = null, [FromQuery] int? pageSize = null, [FromQuery] string projection = null)
+        {
+            return await ExecuteAsync(async () =>
+            {
+                try
+                {
+                    var result = await _userService.GetUserGroupsPaginado(userId, page, pageSize);
+                    var projectedItems = ProjectionHelper.ApplyProjection(result.Items, projection);
+
+                    return Ok(new ResultadoPaginado<object>
+                    {
+                        Items = projectedItems,
+                        Pagina = result.Pagina,
+                        TamanhoPagina = result.TamanhoPagina,
+                        Total = result.Total
+                    });
+                }
+                catch (AppException e)
+                {
+                    return BadRequest(e.Errors);
+                }
+            }, "GetUserGroupsPaginado", new Dictionary<string, string>
+            {
+                { "UserId", userId },
+                { "Page", page?.ToString() },
+                { "PageSize", pageSize?.ToString() },
+                { "Projection", projection }
+            });
         }
 
         /// <summary>
