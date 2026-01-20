@@ -2,9 +2,13 @@
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
 using Identidade.Infraestrutura.Helpers;
+using Identidade.Infraestrutura.Resilience;
 using Identidade.Publico.Dtos;
 using Identidade.Publico.Events;
 using MassTransit;
+using Microsoft.Data.SqlClient;
+using Polly;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -36,6 +40,8 @@ namespace Identidade.Infraestrutura.ServicosCliente
         private readonly IDatabaseConnectionUserModifier _databaseConnectionModifier;
         private readonly IFabricaGrupoUsuario _fabricaGrupoUsuario;
         private readonly IFabricaPermissao _fabricaPermissao;
+        private readonly ResiliencePipeline _pipeline;
+        private readonly ResiliencePipeline _busPublishPipeline;
 
         public UserGroupClientService(IRepository<UserGroup> userGroupRepository, IAuthorizationService authorizationService,
             IBus bus, IPermissaoOperacaoHelper permissaoOperacaoHelper, IDatabaseConnectionUserModifier databaseConnectionModifier,
@@ -48,25 +54,34 @@ namespace Identidade.Infraestrutura.ServicosCliente
             _databaseConnectionModifier = databaseConnectionModifier;
             _fabricaGrupoUsuario = fabricaGrupoUsuario;
             _fabricaPermissao = fabricaPermissao;
+
+            _pipeline = FabricaPipelineResiliencia.Create();
+            _busPublishPipeline = FabricaPipelineResiliencia.CreateBusPublish();
         }
 
-        public async Task<OutputUserGroupDto> AddPermissions(string userGroupName, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId)
+        public Task<OutputUserGroupDto> AddPermissions(string userGroupName, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId) =>
+            ExecuteResilientAsync(() => AddPermissionsCore(userGroupName, permissions, requestUserId));
+
+        private async Task<OutputUserGroupDto> AddPermissionsCore(string userGroupName, IReadOnlyCollection<InputPermissionDto> permissions, string requestUserId)
         {
             var dicPermissions = permissions.ToDictionary(p => p.Id, p => _permissaoOperacaoHelper.GetSomaOperacoes(p.Operations));
             var userGroup = await _authorizationService.AddPermissionsIntoUserGroup(userGroupName, dicPermissions);
             var userGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(userGroup);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = userGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return userGroupDto;
         }
 
-        public async Task<OutputUserGroupDto> Create(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
+        public Task<OutputUserGroupDto> Create(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null) =>
+            ExecuteResilientAsync(() => CreateCore(userGroupDto, requestUserId, suggestedId));
+
+        private async Task<OutputUserGroupDto> CreateCore(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             _userGroupRepository.BeginTransaction();
@@ -85,15 +100,16 @@ namespace Identidade.Infraestrutura.ServicosCliente
             _userGroupRepository.DefineTransaction(successfulResult);
 
             var createdUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(createdUserGroup);
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = createdUserGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return createdUserGroupDto;
         }
+
         private bool CreateUpdateGroupUserARC(UserGroup createdUserGroup, InputUserGroupDto userGroupDto)
         {
             _userGroupRepository.ConfigureParametersToCreateUpdate(out var parameters, createdUserGroup.Name, Constants.DATA_MAXIMA(), createdUserGroup.Id, userGroupDto.ArcXml, Constants.cst_GrupoUsuario, Constants.cst_Ugr);
@@ -102,43 +118,51 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return context;
         }
 
-        public async Task Delete(string userGroupName, string requestUserId)
+        public Task Delete(string userGroupName, string requestUserId) =>
+            ExecuteResilientAsync(() => DeleteCore(userGroupName, requestUserId));
+
+        private async Task DeleteCore(string userGroupName, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             _userGroupRepository.BeginTransaction();
 
             var deletedId = await _userGroupRepository.RemoveByName(userGroupName);
 
-            bool successfulResult = false;
             _userGroupRepository.ConfigureParametersToRemove(out var parameters, deletedId);
-            successfulResult = _userGroupRepository.RemoveItemDirectory(Constants.cst_SpRemoveItemDiretorio, parameters);
+            var successfulResult = _userGroupRepository.RemoveItemDirectory(Constants.cst_SpRemoveItemDiretorio, parameters);
 
             _userGroupRepository.DefineTransaction(successfulResult);
-            if(successfulResult)
-                await _bus.Publish(
+            if (successfulResult)
+                await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                     new UserGroupDeletedEvent
                     {
                         UserGroupId = deletedId,
                         RequestUserId = requestUserId
-                    });
+                    }));
         }
 
-        public async Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId)
+        public Task<OutputUserGroupDto> DeletePermissions(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId) =>
+            ExecuteResilientAsync(() => DeletePermissionsCore(userGroupName, permissionsIds, requestUserId));
+
+        private async Task<OutputUserGroupDto> DeletePermissionsCore(string userGroupName, IReadOnlyCollection<string> permissionsIds, string requestUserId)
         {
             var userGroup = await _authorizationService.DeletePermissionsFromUserGroup(userGroupName, permissionsIds);
             var userGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(userGroup);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = userGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return userGroupDto;
         }
 
-        public async Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName)
+        public Task<IReadOnlyCollection<OutputUserGroupDto>> Get(string userGroupName) =>
+            ExecuteResilientAsync(() => GetCore(userGroupName));
+
+        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetCore(string userGroupName)
         {
             if (userGroupName == null)
                 return await GetAll();
@@ -146,13 +170,19 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return await GetByName(userGroupName);
         }
 
-        public async Task<OutputUserGroupDto> GetById(string userGroupId)
+        public Task<OutputUserGroupDto> GetById(string userGroupId) =>
+            ExecuteResilientAsync(() => GetByIdCore(userGroupId));
+
+        private async Task<OutputUserGroupDto> GetByIdCore(string userGroupId)
         {
             var userGroup = await _userGroupRepository.GetById(userGroupId);
             return _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(userGroup);
         }
 
-        public async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName)
+        public Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissions(string userGroupName) =>
+            ExecuteResilientAsync(() => GetPermissionsCore(userGroupName));
+
+        private async Task<IReadOnlyCollection<OutputPermissionDto>> GetPermissionsCore(string userGroupName)
         {
             var userGroup = await _userGroupRepository.GetByName(userGroupName);
             var permissions = userGroup.UserGroupPermissions.Select(ugp => ugp.Permission).ToArray();
@@ -161,7 +191,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return permissionsDto;
         }
 
-        public async Task<OutputUserGroupDto> Update(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId)
+        public Task<OutputUserGroupDto> Update(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateCore(userGroupId, userGroupDto, requestUserId));
+
+        private async Task<OutputUserGroupDto> UpdateCore(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             _userGroupRepository.BeginTransaction();
@@ -186,17 +219,20 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
             var createdUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(savedUserGroup);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = createdUserGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return createdUserGroupDto;
         }
 
-        public async Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId)
+        public Task<OutputUserGroupDto> UpdateByName(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateByNameCore(userGroupName, userGroupDto, requestUserId));
+
+        private async Task<OutputUserGroupDto> UpdateByNameCore(string userGroupName, InputUserGroupDto userGroupDto, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             _userGroupRepository.BeginTransaction();
@@ -234,7 +270,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return new[] { _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(userGroup) };
         }
 
-        public async Task<OutputUserGroupDto> CreateApi(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
+        public Task<OutputUserGroupDto> CreateApi(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null) =>
+            ExecuteResilientAsync(() => CreateApiCore(userGroupDto, requestUserId, suggestedId));
+
+        private async Task<OutputUserGroupDto> CreateApiCore(InputUserGroupDto userGroupDto, string requestUserId, string suggestedId = null)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
 
@@ -244,28 +283,36 @@ namespace Identidade.Infraestrutura.ServicosCliente
             var createdUserGroup = await _userGroupRepository.Create(userGroup);
             var createdUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(createdUserGroup);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = createdUserGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return createdUserGroupDto;
         }
-        public async Task DeleteApi(string userGroupId, string requestUserId)
+
+        public Task DeleteApi(string userGroupId, string requestUserId) =>
+            ExecuteResilientAsync(() => DeleteApiCore(userGroupId, requestUserId));
+
+        private async Task DeleteApiCore(string userGroupId, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             await _userGroupRepository.Remove(userGroupId);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupDeletedEvent
                 {
                     UserGroupId = userGroupId,
                     RequestUserId = requestUserId
-                });
+                }));
         }
-        public async Task<OutputUserGroupDto> UpdateApi(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId)
+
+        public Task<OutputUserGroupDto> UpdateApi(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateApiCore(userGroupId, userGroupDto, requestUserId));
+
+        private async Task<OutputUserGroupDto> UpdateApiCore(string userGroupId, InputUserGroupDto userGroupDto, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userGroupRepository.GetContext(), requestUserId);
             var userGroup = await _userGroupRepository.GetById(userGroupId);
@@ -279,14 +326,53 @@ namespace Identidade.Infraestrutura.ServicosCliente
             var savedUserGroup = await _userGroupRepository.Update(userGroup);
             var savedUserGroupDto = _fabricaGrupoUsuario.MapearParaDtoSaidaGrupoUsuario(savedUserGroup);
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserGroupCreatedOrUpdatedEvent
                 {
                     UserGroup = savedUserGroupDto,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return savedUserGroupDto;
         }
+
+        private Task ExecuteResilientBusPublishAsync(Func<Task> action) =>
+            _busPublishPipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
+
+        private Task ExecuteResilientAsync(Func<Task> action) =>
+            _pipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
+
+        private Task<T> ExecuteResilientAsync<T>(Func<Task<T>> action) =>
+            _pipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    return await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
     }
 }

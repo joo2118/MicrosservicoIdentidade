@@ -20,7 +20,6 @@
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="8.0.2" />
     <PackageReference Include="AspNetCore.HealthChecks.System" Version="8.0.1" />
-    <PackageReference Include="AutoMapper" Version="14.0.0" />
     <PackageReference Include="Elastic.Serilog.Sinks" Version="8.19.0" />
     <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.5.2" />
     <PackageReference Include="MassTransit.Extensions.DependencyInjection" Version="7.3.1" />

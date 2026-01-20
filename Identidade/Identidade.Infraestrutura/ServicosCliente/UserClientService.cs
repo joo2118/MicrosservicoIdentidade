@@ -17,6 +17,8 @@ using Identidade.Publico.Enumerations;
 using Identidade.Publico.Events;
 using Identidade.Infraestrutura.Configuracoes;
 using Identidade.Dominio.Repositorios;
+using Identidade.Infraestrutura.Resilience;
+using Polly;
 
 namespace Identidade.Infraestrutura.ServicosCliente
 {
@@ -49,6 +51,9 @@ namespace Identidade.Infraestrutura.ServicosCliente
         private readonly IArcUserXmlWriter _arcUserXmlWriter;
         private readonly IFabricaUsuario _fabricaUsuario;
 
+        private readonly ResiliencePipeline _pipeline;
+        private readonly ResiliencePipeline _busPublishPipeline;
+
         public UserClientService(IUserRepository userRepository, IAuthorizationService authorizationService,
             IUserValidator userValidator, IPasswordValidator passwordValidator, IBus bus, ISettings settings, IDatabaseConnectionUserModifier databaseConnectionModifier, IArcUserXmlWriter arcUserXmlWriter,
             IFabricaUsuario fabricaUsuario)
@@ -62,15 +67,24 @@ namespace Identidade.Infraestrutura.ServicosCliente
             _databaseConnectionModifier = databaseConnectionModifier ?? throw new ArgumentNullException(nameof(databaseConnectionModifier));
             _arcUserXmlWriter = arcUserXmlWriter ?? throw new ArgumentNullException(nameof(arcUserXmlWriter));
             _fabricaUsuario = fabricaUsuario ?? throw new ArgumentNullException(nameof(fabricaUsuario));
+
+            _pipeline = FabricaPipelineResiliencia.Create();
+            _busPublishPipeline = FabricaPipelineResiliencia.CreateBusPublish();
         }
 
-        public async Task AssociateToUserGroup(string userId, string userGroupName, string requestUserId)
+        public Task AssociateToUserGroup(string userId, string userGroupName, string requestUserId) =>
+            ExecuteResilientAsync(() => AssociateToUserGroupCore(userId, userGroupName, requestUserId));
+
+        private async Task AssociateToUserGroupCore(string userId, string userGroupName, string requestUserId)
         {
             var user = await _authorizationService.AssociateUserToUserGroup(userId, userGroupName);
             await PublishUserCreatedOrUpdated(user, null, requestUserId);
         }
 
-        public async Task<OutputUserDto> Create(InputUserDto inputUserDto, string requestUserId, string suggestedId = null)
+        public Task<OutputUserDto> Create(InputUserDto inputUserDto, string requestUserId, string suggestedId = null) =>
+            ExecuteResilientAsync(() => CreateCore(inputUserDto, requestUserId, suggestedId));
+
+        private async Task<OutputUserDto> CreateCore(InputUserDto inputUserDto, string requestUserId, string suggestedId = null)
         {
             _userValidator.VerifyExistences(inputUserDto?.SubstituteUsers, inputUserDto?.UserGroups);
 
@@ -99,7 +113,7 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
                 _userRepository.DefineTransaction(successfulResult);
             }
-            catch (Exception)
+            catch
             {
                 _userRepository.DefineTransaction(false);
                 throw;
@@ -108,7 +122,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
         }
 
-        public async Task<OutputUserDto> Create(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null)
+        public Task<OutputUserDto> Create(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null) =>
+            ExecuteResilientAsync(() => CreateCore(arcUserDto, requestUserId, suggestedId));
+
+        private async Task<OutputUserDto> CreateCore(ArcUserDto arcUserDto, string requestUserId, string suggestedId = null)
         {
             _fabricaUsuario.ValidarArcUserDto(arcUserDto);
 
@@ -130,28 +147,31 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
                 var arcUser = _fabricaUsuario.MapearParaArcUser(arcUserDto);
 
-                var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType.Value), createdUser.PasswordHistory);
+                var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType!.Value), createdUser.PasswordHistory);
                 var createUpdateResult = CreateUpdateUserARC(arcUserDto, arcXml.ToString(), createdUser);
 
                 if (!createUpdateResult.Success)
                     throw new InvalidOperationException($"{Constants.Exception.cst_UserCreationFailed} Error: '{createUpdateResult.Error}'");
 
                 if (!createUpdateResult.Changed)
-                    throw new InvalidOperationException(Constants.Exception.cst_UserCreationFailed);    
+                    throw new InvalidOperationException(Constants.Exception.cst_UserCreationFailed);
 
                 _userRepository.DefineTransaction(true);
                 await PublishUserCreatedOrUpdated(createdUser, null, requestUserId);
 
                 return _fabricaUsuario.MapearParaDtoSaidaUsuario(createdUser);
             }
-            catch (Exception)
+            catch
             {
                 _userRepository.DefineTransaction(false);
                 throw;
             }
         }
 
-        public async Task Delete(string userId, string requestUserId)
+        public Task Delete(string userId, string requestUserId) =>
+            ExecuteResilientAsync(() => DeleteCore(userId, requestUserId));
+
+        private async Task DeleteCore(string userId, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
             _userRepository.BeginTransaction();
@@ -169,27 +189,33 @@ namespace Identidade.Infraestrutura.ServicosCliente
                 _userRepository.DefineTransaction(successfulResult);
 
                 if (successfulResult)
-                    await _bus.Publish(
+                    await ExecuteResilientAsync(() => _bus.Publish(
                         new UserDeletedEvent
                         {
                             UserId = userId,
                             RequestUserId = requestUserId
-                        });
+                        }));
             }
-            catch (Exception)
+            catch
             {
                 _userRepository.DefineTransaction(false);
                 throw;
             }
         }
 
-        public async Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId)
+        public Task DissociateFromUserGroup(string userId, string userGroupName, string requestUserId) =>
+            ExecuteResilientAsync(() => DissociateFromUserGroupCore(userId, userGroupName, requestUserId));
+
+        private async Task DissociateFromUserGroupCore(string userId, string userGroupName, string requestUserId)
         {
             var user = await _authorizationService.DissociateUserFromUserGroup(userId, userGroupName);
             await PublishUserCreatedOrUpdated(user, null, requestUserId);
         }
 
-        public async Task<IReadOnlyCollection<OutputUserDto>> Get(string login)
+        public Task<IReadOnlyCollection<OutputUserDto>> Get(string login) =>
+            ExecuteResilientAsync(() => GetCore(login));
+
+        private async Task<IReadOnlyCollection<OutputUserDto>> GetCore(string login)
         {
             if (login == null)
                 return await GetAll();
@@ -197,7 +223,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return await GetByLogin(login);
         }
 
-        public async Task<OutputUserDto> GetById(string userId)
+        public Task<OutputUserDto> GetById(string userId) =>
+            ExecuteResilientAsync(() => GetByIdCore(userId));
+
+        private async Task<OutputUserDto> GetByIdCore(string userId)
         {
             var user = await _userRepository.GetById(userId);
             return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
@@ -205,7 +234,8 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
         public OutputUserDto GetById(string userId, out string password)
         {
-            var user = _userRepository.GetById(userId).Result;
+            // Avoid sync-over-async deadlocks by blocking with GetAwaiter().GetResult().
+            var user = ExecuteResilientAsync(() => _userRepository.GetById(userId)).GetAwaiter().GetResult();
             var userDto = _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
 
             var authenticationType = GetAuthenticationType(userDto.AuthenticationType);
@@ -216,7 +246,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return userDto;
         }
 
-        public async Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId)
+        public Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroups(string userId) =>
+            ExecuteResilientAsync(() => GetUserGroupsCore(userId));
+
+        private async Task<IReadOnlyCollection<OutputUserGroupDto>> GetUserGroupsCore(string userId)
         {
             var user = await _userRepository.GetById(userId);
             var userGroups = user.UserGroupUsers.Select(ugu => ugu.UserGroup).ToArray();
@@ -224,7 +257,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return userGroups.Select(ug => new OutputUserGroupDto { Id = ug.Id, Name = ug.Name, CreatedAt = ug.CreatedAt, LastUpdatedAt = ug.LastUpdatedAt }).ToArray();
         }
 
-        public async Task<OutputUserDto> Update(string userId, InputUserDto inputUserDto, string requestUserId)
+        public Task<OutputUserDto> Update(string userId, InputUserDto inputUserDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateCore(userId, inputUserDto, requestUserId));
+
+        private async Task<OutputUserDto> UpdateCore(string userId, InputUserDto inputUserDto, string requestUserId)
         {
             var user = await _userRepository.GetById(userId);
 
@@ -249,14 +285,17 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
                 return _fabricaUsuario.MapearParaDtoSaidaUsuario(user);
             }
-            catch (Exception)
+            catch
             {
                 _userRepository.DefineTransaction(false);
                 throw;
             }
         }
 
-        public async Task<OutputUserDto> Update(string userId, ArcUserDto arcUserDto, string requestUserId)
+        public Task<OutputUserDto> Update(string userId, ArcUserDto arcUserDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateCore(userId, arcUserDto, requestUserId));
+
+        private async Task<OutputUserDto> UpdateCore(string userId, ArcUserDto arcUserDto, string requestUserId)
         {
             _fabricaUsuario.ValidarArcUserDto(arcUserDto);
 
@@ -277,7 +316,7 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
                 var arcUser = _fabricaUsuario.MapearParaArcUser(arcUserDto);
 
-                var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType.Value), savedUser.PasswordHistory);
+                var arcXml = _arcUserXmlWriter.Write(arcUser, GetDatabaseAuthenticationStringValueAttribute(arcUserDto.AuthenticationType!.Value), savedUser.PasswordHistory);
                 var createUpdateResult = CreateUpdateUserARC(arcUserDto, arcXml.ToString(), savedUser);
 
                 if (!createUpdateResult.Success)
@@ -290,14 +329,17 @@ namespace Identidade.Infraestrutura.ServicosCliente
 
                 return _fabricaUsuario.MapearParaDtoSaidaUsuario(savedUser);
             }
-            catch (Exception)
+            catch
             {
                 _userRepository.DefineTransaction(false);
                 throw;
             }
         }
 
-        public async Task<OutputUserDto> CreateApi(InputUserDto inputUserDto, string requestUserId, string suggestedId = null)
+        public Task<OutputUserDto> CreateApi(InputUserDto inputUserDto, string requestUserId, string suggestedId = null) =>
+            ExecuteResilientAsync(() => CreateApiCore(inputUserDto, requestUserId, suggestedId));
+
+        private async Task<OutputUserDto> CreateApiCore(InputUserDto inputUserDto, string requestUserId, string suggestedId = null)
         {
             _userValidator.VerifyExistences(inputUserDto.SubstituteUsers, inputUserDto.UserGroups);
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
@@ -313,7 +355,10 @@ namespace Identidade.Infraestrutura.ServicosCliente
             return await PublishUserCreatedOrUpdated(createdUser, inputUserDto.Password, requestUserId);
         }
 
-        public async Task<OutputUserDto> UpdateApi(string userId, InputUserDto inputUserDto, string requestUserId)
+        public Task<OutputUserDto> UpdateApi(string userId, InputUserDto inputUserDto, string requestUserId) =>
+            ExecuteResilientAsync(() => UpdateApiCore(userId, inputUserDto, requestUserId));
+
+        private async Task<OutputUserDto> UpdateApiCore(string userId, InputUserDto inputUserDto, string requestUserId)
         {
             _databaseConnectionModifier.ModifyConnection(_userRepository.GetContext(), requestUserId);
             var user = await _userRepository.GetById(userId);
@@ -343,7 +388,8 @@ namespace Identidade.Infraestrutura.ServicosCliente
         private async Task<IReadOnlyCollection<OutputUserDto>> GetAll()
         {
             var users = await _userRepository.GetAll();
-            return users.Select(_fabricaUsuario.MapearParaDtoSaidaUsuario).ToArray();
+            var dtos = users.Select(u => _fabricaUsuario.MapearParaDtoSaidaUsuario(u)).ToArray();
+            return dtos;
         }
 
         private static void AdjustCollections(UserBaseDto inputUserDto, User user)
@@ -362,7 +408,7 @@ namespace Identidade.Infraestrutura.ServicosCliente
             if (userDto.AuthenticationType == null)
                 userDto.AuthenticationType = authenticationType;
 
-            await _bus.Publish(
+            await ExecuteResilientBusPublishAsync(() => _bus.Publish(
                 new UserCreatedOrUpdatedEvent
                 {
                     User = userDto,
@@ -370,10 +416,49 @@ namespace Identidade.Infraestrutura.ServicosCliente
                     PasswordHash = user.PasswordHash,
                     HashArc = hashArc,
                     RequestUserId = requestUserId
-                });
+                }));
 
             return userDto;
         }
+
+        private Task ExecuteResilientBusPublishAsync(Func<Task> action) =>
+            _busPublishPipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
+
+        private Task ExecuteResilientAsync(Func<Task> action) =>
+            _pipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
+
+        private Task<T> ExecuteResilientAsync<T>(Func<Task<T>> action) =>
+            _pipeline.ExecuteAsync(async _ =>
+            {
+                try
+                {
+                    return await action().ConfigureAwait(false);
+                }
+                catch (SqlException ex) when (DetectorErroSQLTransitorio.ErroTransient(ex))
+                {
+                    throw new ExceptionTransitoriaSQL("Transient SQL error.", ex);
+                }
+            }).AsTask();
 
         private AuthenticationType GetAuthenticationType(AuthenticationType? userAuthenticationType)
         {

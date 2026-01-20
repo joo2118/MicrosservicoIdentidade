@@ -13,15 +13,20 @@ namespace Identidade.Infraestrutura.RedisNotifier
             _statusNotifier = statusNotifier;
         }
 
-        public Task Send(ConsumerConsumeContext<T> context, IPipe<ConsumerConsumeContext<T>> next)
+        public async Task Send(ConsumerConsumeContext<T> context, IPipe<ConsumerConsumeContext<T>> next)
         {
             using (_statusNotifier.SetWorking(context.MessageId?.ToString()))
             {
-                next?.Send(context)?.Wait();
-                _statusNotifier.SetIdle();
+                try
+                {
+                    if (next != null)
+                        await next.Send(context).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _statusNotifier.SetIdle();
+                }
             }
-
-            return Task.CompletedTask;
         }
 
         public void Probe(ProbeContext context) { }

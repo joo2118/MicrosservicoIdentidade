@@ -8,7 +8,6 @@ using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Repositorios;
 using Identidade.Dominio.Servicos;
 using Identidade.Infraestrutura.Adaptadores;
-using Identidade.Infraestrutura.ClientServices;
 using Identidade.Infraestrutura.Data;
 using Identidade.Infraestrutura.Fabricas;
 using Identidade.Infraestrutura.Helpers;

@@ -1,8 +1,11 @@
 ﻿using Identidade.Dominio.Servicos;
-using Identidade.Publico.Dtos;
+using Identidade.Infraestrutura.Resilience;
+using Polly;
+using System;
 using System.Threading.Tasks;
+using Identidade.Publico.Dtos;
 
-namespace Identidade.Infraestrutura.ClientServices
+namespace Identidade.Infraestrutura.ServicosCliente
 {
     public interface IAuthClientService
     {
@@ -13,16 +16,24 @@ namespace Identidade.Infraestrutura.ClientServices
     public class AuthClientService : IAuthClientService
     {
         private readonly ISignInManager _signInManager;
+        private readonly ResiliencePipeline _pipeline;
 
         public AuthClientService(ISignInManager signInManager)
         {
             _signInManager = signInManager;
+            _pipeline = FabricaPipelineResiliencia.Create();
         }
 
-        public async Task<bool> LogIn(LoginInfoDto loginInfoDto) =>
-            await _signInManager.LogIn(loginInfoDto.UserName, loginInfoDto.Password);
-        
-        public async Task LogOut() =>
-            await _signInManager.LogOut();
+        public Task<bool> LogIn(LoginInfoDto loginInfoDto) =>
+            ExecuteResilientAsync(() => _signInManager.LogIn(loginInfoDto.UserName, loginInfoDto.Password));
+
+        public Task LogOut() =>
+            ExecuteResilientAsync(() => _signInManager.LogOut());
+
+        private Task<T> ExecuteResilientAsync<T>(Func<Task<T>> action) =>
+            _pipeline.ExecuteAsync(async _ => await action().ConfigureAwait(false)).AsTask();
+
+        private Task ExecuteResilientAsync(Func<Task> action) =>
+            _pipeline.ExecuteAsync(async _ => await action().ConfigureAwait(false)).AsTask();
     }
 }
