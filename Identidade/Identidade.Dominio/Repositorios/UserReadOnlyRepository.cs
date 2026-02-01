@@ -219,7 +219,6 @@ namespace Identidade.Dominio.Repositorios
         private static IQueryable<User> AddUserRelatedData(IQueryable<User> users)
         {
             return users
-                .AsNoTracking()
                 .AsSplitQuery()
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)

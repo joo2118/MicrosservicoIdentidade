@@ -84,7 +84,6 @@ namespace Identidade.Dominio.Repositorios
         private IQueryable<Permission> QueryWithRelatedData()
         {
             return _arcDbContext.Permissions
-                .AsNoTracking()
                 .AsSplitQuery()
                 .Include(p => p.UserGroupPermissions);
         }

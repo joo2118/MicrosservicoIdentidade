@@ -169,7 +169,6 @@ namespace Identidade.Dominio.Repositorios
                 return [];
 
             return await _arcDbContext.UserGroups
-                .AsNoTracking()
                 .Where(ug => normalizedUserGroupIds.Contains(ug.Id.ToUpperInvariant()))
                 .ToArrayAsync();
         }
@@ -188,7 +187,6 @@ namespace Identidade.Dominio.Repositorios
                 return [];
 
             return await _arcDbContext.Users
-                .AsNoTracking()
                 .AsSplitQuery()
                 .Where(u => normalizedUserIds.Contains(u.Id.ToUpperInvariant()))
                 .Include(u => u.UserGroupUsers)
@@ -204,7 +202,6 @@ namespace Identidade.Dominio.Repositorios
         private IQueryable<UserGroup> AddUserGroupsRelatedData(IQueryable<UserGroup> userGroups)
         {
             return userGroups
-                .AsNoTracking()
                 .AsSplitQuery()
                 .Include(ug => ug.UserGroupPermissions)
                 .ThenInclude(ugp => ugp.Permission)

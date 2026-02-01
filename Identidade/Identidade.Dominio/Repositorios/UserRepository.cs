@@ -125,7 +125,6 @@ namespace Identidade.Dominio.Repositorios
                 return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
 
             var users = await _arcDbContext.Users
-                .AsNoTracking()
                 .AsSplitQuery()
                 .Where(u => normalized.Contains(u.Id))
                 .Include(u => u.UserGroupUsers)
