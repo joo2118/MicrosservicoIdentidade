@@ -2,6 +2,7 @@
 using Identidade.Dominio.Interfaces;
 using Identidade.Dominio.Modelos;
 using Identidade.Dominio.Servicos;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -110,5 +111,30 @@ namespace Identidade.Dominio.Repositorios
 
         Task<IReadOnlyCollection<User>> IReadOnlyRepository<User>.GetAll(int? page, int? pageSize) =>
             GetAll(page, pageSize);
+
+        public async Task<IReadOnlyDictionary<string, User>> GetByIds(string[] ids)
+        {
+            if (ids is null || ids.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var normalized = ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            if (normalized.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var users = await _arcDbContext.Users
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Where(u => normalized.Contains(u.Id))
+                .Include(u => u.UserGroupUsers)
+                .ThenInclude(ugu => ugu.UserGroup)
+                .Include(u => u.UserSubstitutions)
+                .ThenInclude(usu => usu.SubstituteUser)
+                .ToArrayAsync();
+
+            return users.ToDictionary(u => u.Id, u => u, StringComparer.OrdinalIgnoreCase);
+        }
     }
 }

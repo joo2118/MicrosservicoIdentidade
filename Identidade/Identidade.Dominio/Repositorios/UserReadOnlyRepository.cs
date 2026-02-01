@@ -178,6 +178,44 @@ namespace Identidade.Dominio.Repositorios
 
         public IARCDbContext GetContext() => _arcDbContext;
 
+        async Task<IReadOnlyDictionary<string, User>> IReadOnlyRepository<User>.GetByIds(string[] ids)
+        {
+            if (ids is null || ids.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var normalized = ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            if (normalized.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var users = await AddUserRelatedData(_arcDbContext.Users)
+                .Where(u => normalized.Contains(u.Id))
+                .ToArrayAsync();
+
+            return users.ToDictionary(u => u.Id, u => u, StringComparer.OrdinalIgnoreCase);
+        }
+
+        public async Task<IReadOnlyDictionary<string, User>> GetByIds(string[] ids)
+        {
+            if (ids is null || ids.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var normalized = ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            if (normalized.Length == 0)
+                return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
+
+            var users = await AddUserRelatedData(_arcDbContext.Users)
+                .Where(u => normalized.Contains(u.Id))
+                .ToArrayAsync();
+
+            return users.ToDictionary(u => u.Id, u => u, StringComparer.OrdinalIgnoreCase);
+        }
+
         private static IQueryable<User> AddUserRelatedData(IQueryable<User> users)
         {
             return users

@@ -19,12 +19,15 @@ namespace Identidade.Dominio.Helpers
     public class UserValidator : AbstractValidator<string>, IUserValidator
     {
         private readonly IReadOnlyRepository<User> _userRepository;
-        private readonly IUserGroupRepository _userGroupRepository;
+        private readonly IReadOnlyRepository<UserGroup> _userGroupReadOnlyRepository;
 
         public UserValidator(IReadOnlyRepository<User> userRepository, IUserGroupRepository userGroupRepository)
         {
             _userRepository = userRepository;
-            _userGroupRepository = userGroupRepository;
+            _userGroupReadOnlyRepository = userGroupRepository as IReadOnlyRepository<UserGroup>;
+
+            if (_userGroupReadOnlyRepository is null)
+                throw new ArgumentException($"{nameof(userGroupRepository)} must implement {nameof(IReadOnlyRepository<UserGroup>)} to support batched lookups.", nameof(userGroupRepository));
 
             RuleFor(userName => userName)
                 .Must(userName => !string.IsNullOrWhiteSpace(userName))
@@ -54,12 +57,16 @@ namespace Identidade.Dominio.Helpers
             if (userGroupIds is null || !userGroupIds.Any())
                 return;
 
-            var userGroupsFound = _userGroupRepository.GetUserGroups(userGroupIds.ToArray()).GetAwaiter().GetResult();
-            var userGroupsFoundIds = userGroupsFound.Select(ug => ug.Id).ToHashSet();
+            var ids = userGroupIds.Where(id => !string.IsNullOrWhiteSpace(id)).ToArray();
+            if (ids.Length == 0)
+                return;
 
-            var missingIds = userGroupIds.Except(userGroupsFoundIds, StringComparer.OrdinalIgnoreCase).ToArray();
+            var userGroupsFoundById = _userGroupReadOnlyRepository.GetByIds(ids).GetAwaiter().GetResult();
+            var missingIds = ids
+                .Where(id => !userGroupsFoundById.ContainsKey(id))
+                .ToArray();
 
-            if (missingIds.Any())
+            if (missingIds.Length > 0)
                 throw new NotFoundAppException("User Groups", "ID", string.Join(", ", missingIds));
         }
 
@@ -68,12 +75,16 @@ namespace Identidade.Dominio.Helpers
             if (usersIds is null || !usersIds.Any())
                 return;
 
-            var usersFound = _userGroupRepository.GetUsers(usersIds.ToArray()).GetAwaiter().GetResult();
-            var usersFoundIds = usersFound.Select(ug => ug.Id).ToHashSet();
+            var ids = usersIds.Where(id => !string.IsNullOrWhiteSpace(id)).ToArray();
+            if (ids.Length == 0)
+                return;
 
-            var missingIds = usersIds.Except(usersFoundIds, StringComparer.OrdinalIgnoreCase).ToArray();
+            var usersFoundById = _userRepository.GetByIds(ids).GetAwaiter().GetResult();
+            var missingIds = ids
+                .Where(id => !usersFoundById.ContainsKey(id))
+                .ToArray();
 
-            if (missingIds.Any())
+            if (missingIds.Length > 0)
                 throw new NotFoundAppException("Users", "ID", string.Join(", ", missingIds));
         }
 

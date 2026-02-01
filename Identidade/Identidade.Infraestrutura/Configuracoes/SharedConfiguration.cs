@@ -98,6 +98,8 @@ namespace Identidade.Infraestrutura.Configuracoes
                     .AddTransient<IUserGroupClientService, UserGroupClientService>()
                     .AddTransient<IPermissionClientService, PermissionClientService>()
                     .AddTransient<IAuthClientService, AuthClientService>()
+                    .AddTransient<IUserGroupRepository, UserGroupRepository>()
+                    .AddTransient<IRepository<UserGroup>, UserGroupRepository>()
                     .AddTransient<UserManager<User>>()
                     .AddTransient<SignInManager<User>>()
                     .AddScoped<ICredentialsFactory, CredentialsFactory>()

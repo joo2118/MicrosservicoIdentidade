@@ -1,3 +1,4 @@
+using Identidade.Dominio.Modelos;
 using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
@@ -8,6 +9,7 @@ namespace Identidade.Dominio.Interfaces
     public interface IReadOnlyRepository<TEntity> where TEntity : class
     {
         Task<TEntity> GetById(string entityId);
+        Task<IReadOnlyDictionary<string, TEntity>> GetByIds(string[] ids);
         Task<TEntity> GetByName(string entityName);
         Task<IReadOnlyCollection<TEntity>> GetAll();
         Task<IReadOnlyCollection<TEntity>> GetAll(int? page, int? pageSize);

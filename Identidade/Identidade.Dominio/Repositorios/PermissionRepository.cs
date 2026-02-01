@@ -28,6 +28,25 @@ namespace Identidade.Dominio.Repositorios
             return permission;
         }
 
+        async Task<IReadOnlyDictionary<string, Permission>> IReadOnlyRepository<Permission>.GetByIds(string[] ids)
+        {
+            if (ids is null || ids.Length == 0)
+                return new Dictionary<string, Permission>(StringComparer.OrdinalIgnoreCase);
+
+            var normalized = ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            if (normalized.Length == 0)
+                return new Dictionary<string, Permission>(StringComparer.OrdinalIgnoreCase);
+
+            var perms = await QueryWithRelatedData()
+                .Where(p => normalized.Contains(p.Id))
+                .ToArrayAsync();
+
+            return perms.ToDictionary(p => p.Id, p => p, StringComparer.OrdinalIgnoreCase);
+        }
+
         public new async Task<Permission> GetByName(string permissionName)
         {
             if (string.IsNullOrWhiteSpace(permissionName))

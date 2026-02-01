@@ -102,6 +102,25 @@ namespace Identidade.Dominio.Repositorios
             return userGroup;
         }
 
+        async Task<IReadOnlyDictionary<string, UserGroup>> IReadOnlyRepository<UserGroup>.GetByIds(string[] ids)
+        {
+            if (ids is null || ids.Length == 0)
+                return new Dictionary<string, UserGroup>(StringComparer.OrdinalIgnoreCase);
+
+            var normalized = ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            if (normalized.Length == 0)
+                return new Dictionary<string, UserGroup>(StringComparer.OrdinalIgnoreCase);
+
+            var userGroups = await GetAllUserGroups()
+                .Where(ug => normalized.Contains(ug.Id))
+                .ToArrayAsync();
+
+            return userGroups.ToDictionary(ug => ug.Id, ug => ug, StringComparer.OrdinalIgnoreCase);
+        }
+
         public new async Task<UserGroup> GetByName(string userGroupName)
         {
             if (string.IsNullOrWhiteSpace(userGroupName))

@@ -97,26 +97,14 @@ namespace Identidade.Dominio.Fabricas
 
             var ids = byId.Keys.ToArray();
 
-            var fetchTasks = ids.Select(async id =>
-            {
-                try
-                {
-                    var permission = await _permissionRepository.GetById(id);
-                    return (id, permission);
-                }
-                catch (NotFoundAppException)
-                {
-                    return (id, permission: null);
-                }
-            });
+            var permissionsById = await _permissionRepository.GetByIds(ids);
 
-            var fetched = await Task.WhenAll(fetchTasks);
+            var missing = ids
+                .Where(id => !permissionsById.ContainsKey(id))
+                .ToArray();
 
-            var missing = fetched.Where(x => x.permission is null).Select(x => x.id).ToArray();
             if (missing.Length > 0)
                 throw new NotFoundAppException("Permissions", "ID", string.Join(", ", missing));
-
-            var permissionsById = fetched.ToDictionary(x => x.id, x => x.permission, StringComparer.OrdinalIgnoreCase);
 
             var result = new List<UserGroupPermission>(permissionDtos.Count);
             foreach (var permissionDto in permissionDtos)
