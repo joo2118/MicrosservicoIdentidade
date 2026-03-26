@@ -1,8 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace Identidade.Dominio.Helpers
 {
@@ -16,11 +17,25 @@ namespace Identidade.Dominio.Helpers
             if (query == null) throw new ArgumentNullException(nameof(query));
             if (opcoesPaginacao == null) throw new ArgumentNullException(nameof(opcoesPaginacao));
 
-            var totalCount = await query.CountAsync(cancellationToken);
-            var items = await query
-                .Skip(opcoesPaginacao.Skip)
-                .Take(opcoesPaginacao.TamanhoPagina)
-                .ToArrayAsync(cancellationToken);
+            int totalCount;
+            T[] items;
+
+            if (query.Provider is IAsyncQueryProvider)
+            {
+                totalCount = await query.CountAsync(cancellationToken);
+                items = await query
+                    .Skip(opcoesPaginacao.Skip)
+                    .Take(opcoesPaginacao.TamanhoPagina)
+                    .ToArrayAsync(cancellationToken);
+            }
+            else
+            {
+                totalCount = query.Count();
+                items = query
+                    .Skip(opcoesPaginacao.Skip)
+                    .Take(opcoesPaginacao.TamanhoPagina)
+                    .ToArray();
+            }
 
             return new ResultadoPaginado<T>
             {

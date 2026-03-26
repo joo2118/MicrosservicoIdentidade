@@ -29,7 +29,7 @@ namespace Identidade.Dominio.Repositorios
             if (string.IsNullOrWhiteSpace(userId))
                 throw new ArgumentException("UserId must be provided", nameof(userId));
 
-            var user = await AddUserRelatedData(_arcDbContext.Users)
+            var user = await AddUserRelatedData(_arcDbContext.Users, asNoTracking: false)
                 .SingleOrDefaultAsync(u => u.Id == userId);
 
             if (user == null)
@@ -43,7 +43,7 @@ namespace Identidade.Dominio.Repositorios
             if (string.IsNullOrWhiteSpace(userName))
                 throw new ArgumentException("UserName must be provided", nameof(userName));
 
-            var user = await AddUserRelatedData(_arcDbContext.Users)
+            var user = await AddUserRelatedData(_arcDbContext.Users, asNoTracking: false)
                 .SingleOrDefaultAsync(u => u.UserName == userName);
 
             if (user == null)
@@ -53,7 +53,7 @@ namespace Identidade.Dominio.Repositorios
         }
 
         public async Task<IReadOnlyCollection<User>> GetAll() =>
-            await AddUserRelatedData(_arcDbContext.Users).ToArrayAsync();
+            await AddUserRelatedData(_arcDbContext.Users, asNoTracking: true).ToArrayAsync();
 
         Task<IReadOnlyCollection<User>> IReadOnlyRepository<User>.GetAll(int? page, int? pageSize) =>
             GetAll(page, pageSize);
@@ -64,7 +64,8 @@ namespace Identidade.Dominio.Repositorios
                 return await GetAll();
 
             var pagination = new OpcoesPaginacao(page, pageSize);
-            return await AddUserRelatedData(_arcDbContext.Users)
+            return await AddUserRelatedData(_arcDbContext.Users, asNoTracking: true)
+                .OrderBy(u => u.Id)
                 .Skip(pagination.Skip)
                 .Take(pagination.TamanhoPagina)
                 .ToArrayAsync();
@@ -190,7 +191,7 @@ namespace Identidade.Dominio.Repositorios
             if (normalized.Length == 0)
                 return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
 
-            var users = await AddUserRelatedData(_arcDbContext.Users)
+            var users = await AddUserRelatedData(_arcDbContext.Users, asNoTracking: true)
                 .Where(u => normalized.Contains(u.Id))
                 .ToArrayAsync();
 
@@ -209,21 +210,23 @@ namespace Identidade.Dominio.Repositorios
             if (normalized.Length == 0)
                 return new Dictionary<string, User>(StringComparer.OrdinalIgnoreCase);
 
-            var users = await AddUserRelatedData(_arcDbContext.Users)
+            var users = await AddUserRelatedData(_arcDbContext.Users, asNoTracking: true)
                 .Where(u => normalized.Contains(u.Id))
                 .ToArrayAsync();
 
             return users.ToDictionary(u => u.Id, u => u, StringComparer.OrdinalIgnoreCase);
         }
 
-        private static IQueryable<User> AddUserRelatedData(IQueryable<User> users)
+        private static IQueryable<User> AddUserRelatedData(IQueryable<User> users, bool asNoTracking)
         {
-            return users
+            var query = users
                 .AsSplitQuery()
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)
                 .Include(u => u.UserSubstitutions)
                 .ThenInclude(usu => usu.SubstituteUser);
+
+            return asNoTracking ? query.AsNoTracking() : query;
         }
     }
 }

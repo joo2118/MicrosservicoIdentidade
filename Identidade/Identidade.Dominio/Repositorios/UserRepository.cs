@@ -126,6 +126,7 @@ namespace Identidade.Dominio.Repositorios
 
             var users = await _arcDbContext.Users
                 .AsSplitQuery()
+                .AsNoTracking()
                 .Where(u => normalized.Contains(u.Id))
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)

@@ -73,6 +73,7 @@ namespace Identidade.Dominio.Repositorios
 
             var pagination = new OpcoesPaginacao(page, pageSize);
             return await QueryWithRelatedData()
+                .OrderBy(u => u.Id)
                 .Skip(pagination.Skip)
                 .Take(pagination.TamanhoPagina)
                 .ToArrayAsync();
@@ -85,6 +86,7 @@ namespace Identidade.Dominio.Repositorios
         {
             return _arcDbContext.Permissions
                 .AsSplitQuery()
+                .AsNoTracking()
                 .Include(p => p.UserGroupPermissions);
         }
     }

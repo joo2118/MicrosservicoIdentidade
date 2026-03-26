@@ -93,7 +93,7 @@ namespace Identidade.Dominio.Repositorios
             if (string.IsNullOrWhiteSpace(userGroupId))
                 throw new ArgumentException("UserGroupId must be provided", nameof(userGroupId));
 
-            var userGroup = await GetAllUserGroups()
+            var userGroup = await GetAllUserGroups(asNoTracking: false)
                 .SingleOrDefaultAsync(ug => ug.Id == userGroupId);
 
             if (userGroup == null)
@@ -114,7 +114,7 @@ namespace Identidade.Dominio.Repositorios
             if (normalized.Length == 0)
                 return new Dictionary<string, UserGroup>(StringComparer.OrdinalIgnoreCase);
 
-            var userGroups = await GetAllUserGroups()
+            var userGroups = await GetAllUserGroups(asNoTracking: true)
                 .Where(ug => normalized.Contains(ug.Id))
                 .ToArrayAsync();
 
@@ -128,7 +128,7 @@ namespace Identidade.Dominio.Repositorios
 
             var normalized = userGroupName.Trim();
 
-            var userGroup = await GetAllUserGroups()
+            var userGroup = await GetAllUserGroups(asNoTracking: false)
                 .SingleOrDefaultAsync(ug => ug.Name == normalized);
 
             if (userGroup == null)
@@ -138,7 +138,7 @@ namespace Identidade.Dominio.Repositorios
         }
 
         public new async Task<IReadOnlyCollection<UserGroup>> GetAll() =>
-            await GetAllUserGroups().ToArrayAsync();
+            await GetAllUserGroups(asNoTracking: true).ToArrayAsync();
 
         Task<IReadOnlyCollection<UserGroup>> IReadOnlyRepository<UserGroup>.GetAll(int? page, int? pageSize) =>
             GetAll(page, pageSize);
@@ -149,7 +149,8 @@ namespace Identidade.Dominio.Repositorios
                 return await GetAll();
 
             var pagination = new OpcoesPaginacao(page, pageSize);
-            return await GetAllUserGroups()
+            return await GetAllUserGroups(asNoTracking: true)
+                .OrderBy(u => u.Id)
                 .Skip(pagination.Skip)
                 .Take(pagination.TamanhoPagina)
                 .ToArrayAsync();
@@ -169,6 +170,7 @@ namespace Identidade.Dominio.Repositorios
                 return [];
 
             return await _arcDbContext.UserGroups
+                .AsNoTracking()
                 .Where(ug => normalizedUserGroupIds.Contains(ug.Id.ToUpperInvariant()))
                 .ToArrayAsync();
         }
@@ -188,6 +190,7 @@ namespace Identidade.Dominio.Repositorios
 
             return await _arcDbContext.Users
                 .AsSplitQuery()
+                .AsNoTracking()
                 .Where(u => normalizedUserIds.Contains(u.Id.ToUpperInvariant()))
                 .Include(u => u.UserGroupUsers)
                 .ThenInclude(ugu => ugu.UserGroup)
@@ -196,17 +199,19 @@ namespace Identidade.Dominio.Repositorios
                 .ToArrayAsync();
         }
 
-        private IQueryable<UserGroup> GetAllUserGroups() =>
-            AddUserGroupsRelatedData(_arcDbContext.UserGroups);
+        private IQueryable<UserGroup> GetAllUserGroups(bool asNoTracking = false) =>
+            AddUserGroupsRelatedData(_arcDbContext.UserGroups, asNoTracking);
 
-        private IQueryable<UserGroup> AddUserGroupsRelatedData(IQueryable<UserGroup> userGroups)
+        private IQueryable<UserGroup> AddUserGroupsRelatedData(IQueryable<UserGroup> userGroups, bool asNoTracking)
         {
-            return userGroups
+            var query = userGroups
                 .AsSplitQuery()
                 .Include(ug => ug.UserGroupPermissions)
                 .ThenInclude(ugp => ugp.Permission)
                 .Include(ug => ug.UserGroupUsers)
                 .ThenInclude(ugu => ugu.User);
+
+            return asNoTracking ? query.AsNoTracking() : query;
         }
     }
 }
